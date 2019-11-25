@@ -90,7 +90,7 @@ describe('fluent-state', () => {
       const fs = new FluentState();
       fs.from('vegetable').to('diced').or('pickled').or('eaten').or('discarded');
 
-      expect(fs.next(['diced', 'pickled'])).to.equal(true);
+      expect(fs.next('diced', 'pickled')).to.equal(true);
       expect(['eaten', 'discarded'].includes(fs.state.name)).to.equal(true);
     });
 
@@ -98,7 +98,7 @@ describe('fluent-state', () => {
       const fs = new FluentState();
       fs.from('vegetable').to('diced').or('pickled');
 
-      expect(fs.next(['diced', 'pickled'])).to.equal(false);
+      expect(fs.next('diced', 'pickled')).to.equal(false);
       expect(fs.state.name).to.equal('vegetable');
     });
 

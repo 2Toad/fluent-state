@@ -46,7 +46,7 @@ export class FluentState {
     return true;
   }
 
-  next(exclude?: string[]): boolean {
+  next(...exclude: string[]): boolean {
     const name = this.state._getRandomTransition(exclude);
     return name ? this.transition(name) : false;
   }

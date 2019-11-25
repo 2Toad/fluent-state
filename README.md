@@ -102,7 +102,7 @@ fluentState.clear();
 
 #### transition(...names: string[]): boolean
 - Transitions to another state.
-- If multiple names are specified, a name is chosen at random.
+- If multiple states are specified, a state is chosen at random.
 - Returns `true` upon success.
 
 ```
@@ -113,16 +113,17 @@ fluentState.transition('diced');
 fluentState.transition('diced', 'discarded');
 ```
 
-#### next(exclude?: string[]): boolean
+#### next(...exclude: string[]): boolean
 - If the current state contains a single transition, that state is transitioned to.
-- If the current state contains multiple transitions, a transition is selected at random (with the option to exclude states from the selection).
+- If the current state contains multiple transitions, a transition is selected at random.
+  - With the option to exclude specified states from the random selection.
 - Returns `true` upon success.
 
 ```
 fluentState.next();
 
 // A random state, excluding 'pickled' and 'discarded'
-fluentState.next(['pickled', 'discarded']);
+fluentState.next('pickled', 'discarded');
 ```
 
 ### Callbacks
