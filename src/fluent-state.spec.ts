@@ -99,7 +99,7 @@ describe('fluent-state', () => {
       fs.from('vegetable').to('diced').or('pickled');
 
       expect(fs.next(['diced', 'pickled'])).to.equal(false);
-      // expect(['eaten', 'discarded'].includes(fs.state.name)).to.equal(true);
+      expect(fs.state.name).to.equal('vegetable');
     });
 
     it('should transition to a specified state', () => {
@@ -107,6 +107,14 @@ describe('fluent-state', () => {
       fs.from('vegetable').to('diced');
 
       expect(fs.transition('diced')).to.equal(true);
+    });
+
+    it('should transition to a random specified state', () => {
+      const fs = new FluentState();
+      fs.from('vegetable').to('diced').or('pickled').or('discarded');
+
+      expect(fs.transition('diced', 'discarded')).to.equal(true);
+      expect(['diced', 'discarded'].includes(fs.state.name)).to.equal(true);
     });
 
     it('transition should change state', () => {

@@ -77,7 +77,7 @@ Explicitly set the state without triggering a transition
 fluentState.setState('diced');
 ```
 
-> NOTE: the state is implicitly set to the first state you add
+> NOTE: the state is initially set to the first state you add via `from()`, and it is implicitly set when you transition to a new state via `transition()` or `next()`
 
 #### has(name: string): boolean {
 Returns true if the state exists
@@ -100,19 +100,23 @@ Removes all states
 fluentState.clear();
 ```
 
-#### transition(name: string): boolean
-Transitions to another state.
-Returns `true` upon success.
+#### transition(...names: string[]): boolean
+- Transitions to another state.
+- If multiple names are specified, a name is chosen at random.
+- Returns `true` upon success.
 
 ```
 // Transition to the 'diced' state
 fluentState.transition('diced');
+
+// Transition to the 'diced' or 'discarded' state (selected at random)
+fluentState.transition('diced', 'discarded');
 ```
 
 #### next(exclude?: string[]): boolean
-If the current state contains a single transition, that state is transitioned to.
-If the current state contains multiple transitions, a transition is selected at random (with the option to exclude states from the selection).
-Returns `true` upon success.
+- If the current state contains a single transition, that state is transitioned to.
+- If the current state contains multiple transitions, a transition is selected at random (with the option to exclude states from the selection).
+- Returns `true` upon success.
 
 ```
 fluentState.next();

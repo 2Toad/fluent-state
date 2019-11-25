@@ -23,17 +23,23 @@ export class FluentState {
     return this.state.can(name);
   }
 
-  transition(name: string): boolean {
-    const previousState = this.state;
-    const results = this.observer.trigger(Lifecycle.BeforeTransition, previousState, name);
-    if (results.some(x => x === false)) { return false; }
+  transition(...names: string[]): boolean {
+    if (!names.length) { throw new Error('Please specify the state you wish to transition to'); }
 
-    if (!this.can(name)) {
-      this.observer.trigger(Lifecycle.TransitionFailed, previousState, name);
+    const previousState = this.state;
+    const nextState = names.length === 1
+      ? names[0]
+      : names[Math.floor(Math.random() * names.length)];
+
+    if (!this.can(nextState)) {
+      this.observer.trigger(Lifecycle.TransitionFailed, previousState, nextState);
       return false;
     }
 
-    this.setState(name);
+    const results = this.observer.trigger(Lifecycle.BeforeTransition, previousState, nextState);
+    if (results.some(x => x === false)) { return false; }
+
+    this.setState(nextState);
     this.state.handlers.forEach(x => x(previousState, this));
 
     this.observer.trigger(Lifecycle.AfterTransition, previousState, this.state);
