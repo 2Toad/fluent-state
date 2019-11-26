@@ -13,7 +13,7 @@
   "scripts": {
     "ts:watch": "tsc-watch",
     "ts:clean": "ts-cleaner --watch",
-    "dev": "run-p ts:watch ts:clean",
+    "dev": "tsc && run-p ts:watch ts:clean",
     "lint": "tslint -c tslint.json -p tsconfig.json",
     "test": "mocha -r ts-node/register src/**/*.spec.ts",
     "prepare": "npm run build",
