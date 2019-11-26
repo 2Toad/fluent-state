@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 
-import { FluentState } from '.';
-import { Lifecycle } from './enums';
+import { FluentState } from '../src';
+import { Lifecycle } from '../src/enums';
 
 describe('fluent-state', () => {
   describe('create states and transitions', () => {

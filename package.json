@@ -15,7 +15,7 @@
     "ts:clean": "ts-cleaner --watch",
     "dev": "tsc && run-p ts:watch ts:clean",
     "lint": "tslint -c tslint.json -p tsconfig.json",
-    "test": "mocha -r ts-node/register src/**/*.spec.ts",
+    "test": "mocha -r ts-node/register tests/**/*.spec.ts",
     "prepare": "npm run build",
     "clean": "rm -rf dist",
     "build": "npm run lint && npm run test && npm run clean && tsc",
