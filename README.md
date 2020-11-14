@@ -10,13 +10,13 @@ A fluent JavaScript State Machine (with TypeScript support)
 
 Install package
 
-```
+```Shell
 npm i @2toad/fluent-state
 ```
 
 ## Usage
 
-```
+```JavaScript
 import { fluentState } from '@2toad/fluent-state';
 // or
 var fluentState = require('@2toad/fluent-state').fluentState;
@@ -45,7 +45,7 @@ The current state
 #### from(name: string): State
 Adds a state
 
-```
+```JavaScript
 // Add the 'vegetable' state
 fluentState.from('vegetable');
 ```
@@ -53,7 +53,7 @@ fluentState.from('vegetable');
 #### to(name: string): Transition
 Adds a transition to a state
 
-```
+```JavaScript
 fluentState
   .from('vegetable') // Add the 'vegetable' state
   .to('diced');      // add the 'diced' state, with a transtion from 'vegetable'
@@ -62,7 +62,7 @@ fluentState
 #### or(name: string): Transition
 Adds a transition to a state
 
-```
+```JavaScript
 fluentState
   .from('vegetable') // Add the 'vegetable' state
   .to('diced')       // add the 'diced' state, with a transtion from 'vegetable'
@@ -73,7 +73,7 @@ fluentState
 #### setState(name: string): void
 Explicitly set the state without triggering a transition
 
-```
+```JavaScript
 fluentState.setState('diced');
 ```
 
@@ -82,21 +82,21 @@ fluentState.setState('diced');
 #### has(name: string): boolean {
 Returns true if the state exists
 
-```
+```JavaScript
 fluentState.has('vegetable');
 ```
 
 ### remove(name: string): void
 Removes a state (and all of its transitions)
 
-```
+```JavaScript
 fluentState.remove('vegetable');
 ```
 
 #### clear(): void
 Removes all states
 
-```
+```JavaScript
 fluentState.clear();
 ```
 
@@ -105,7 +105,7 @@ fluentState.clear();
 - If multiple states are specified, a state is chosen at random.
 - Returns `true` upon success.
 
-```
+```JavaScript
 // Transition to the 'diced' state
 fluentState.transition('diced');
 
@@ -119,7 +119,7 @@ fluentState.transition('diced', 'discarded');
   - With the option to exclude specified states from the random selection.
 - Returns `true` upon success.
 
-```
+```JavaScript
 fluentState.next();
 
 // A random state, excluding 'pickled' and 'discarded'
@@ -132,14 +132,14 @@ You can add callbacks to any state
 #### when(name: string): Event
 Specifies the state you want to add a callback to
 
-```
+```JavaScript
 fluentState.when('diced');
 ```
 
 #### do(handler: (previousState: State, fluentState: FluentState) => any): Handler
 Adds a callback
 
-```
+```JavaScript
 fluentState
   .when('diced')
   .do((previousState, fluentState) => {
@@ -150,7 +150,7 @@ fluentState
 #### and(handler: (previousState: State, fluentState: FluentState) => any): Handler
 Adds another callback
 
-```
+```JavaScript
 fluentState
   .when('diced')
   .do(() => console.log('Transitioned to "diced"'))
@@ -161,7 +161,7 @@ fluentState
 
 > And of course it's all chainable
 
-```
+```JavaScript
 fluentState
   .when('diced').do(() => console.log('Transitioned to "diced"'))
   .when('pickled').do(() => console.log('Transitioned to "pickled"'));
@@ -170,7 +170,7 @@ fluentState
 ### Lifecycle
 You can hook into the state machine lifecycle via the `observe` method.
 
-```
+```JavaScript
 fluentState.observe(Lifecycle.BeforeTransition, (currentState, newState) => {
   // You can prevent the transition by returning false from this event
   return false;
