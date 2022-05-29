@@ -1,6 +1,6 @@
-import { FluentState } from './fluent-state';
-import { Event } from './event';
-import { State } from './state';
+import { FluentState } from "./fluent-state";
+import { Event } from "./event";
+import { State } from "./state";
 
 export class Handler {
   event: Event;

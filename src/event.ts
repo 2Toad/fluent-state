@@ -1,6 +1,6 @@
-import { FluentState } from './fluent-state';
-import { State } from './state';
-import { Handler } from './handler';
+import { FluentState } from "./fluent-state";
+import { State } from "./state";
+import { Handler } from "./handler";
 
 export class Event {
   state: State;
@@ -11,7 +11,9 @@ export class Event {
 
   when(name: string): Event {
     const state = this.state.fluentState._getState(name);
-    if (!state) { throw new Error(`Unknown state: "${name}"`); }
+    if (!state) {
+      throw new Error(`Unknown state: "${name}"`);
+    }
 
     return new Event(state);
   }

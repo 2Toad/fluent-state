@@ -1,10 +1,13 @@
-import { FluentState } from './fluent-state';
-import { Transition } from './transition';
+import { FluentState } from "./fluent-state";
+import { Transition } from "./transition";
 
 export class State {
   fluentState: FluentState;
+
   name: string;
+
   transitions: string[] = [];
+
   handlers: Function[] = [];
 
   constructor(name: string, fluentState: FluentState) {
@@ -27,7 +30,7 @@ export class State {
       return;
     }
 
-    const transitions = this.transitions.filter(x => !exclude.includes(x));
+    const transitions = this.transitions.filter((x) => !exclude.includes(x));
     if (!transitions.length) {
       console.warn(`No states to transition to from "${this.name}", after excluding: "${exclude.join('", "')}"`);
       return;

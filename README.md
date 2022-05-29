@@ -2,7 +2,7 @@
 
 [![GitHub version](https://badge.fury.io/gh/2Toad%2Ffluent-state.svg)](https://badge.fury.io/gh/2Toad%2Ffluent-state)
 [![Downloads](https://img.shields.io/npm/dm/@2toad/fluent-state.svg)](https://www.npmjs.com/package/@2toad/fluent-state)
-[![Build Status](https://travis-ci.org/2Toad/fluent-state.svg?branch=master)](https://travis-ci.org/2Toad/fluent-state)
+[![Build status](https://github.com/2toad/profanity/actions/workflows/nodejs.yml/badge.svg)](https://github.com/2Toad/Profanity/actions/workflows/nodejs.yml)
 
 A fluent JavaScript State Machine (with TypeScript support)
 
@@ -28,9 +28,9 @@ fluentState
 fluentState
   .when('diced').do(() => console.log('diced'));
 
-fluenState.transition('diced');
+fluentState.transition('diced');
 // or
-fluenState.next();
+fluentState.next();
 ```
 
 ## API

@@ -1,4 +1,4 @@
-import { Lifecycle } from './enums';
+import { Lifecycle } from "./enums";
 
 export class Observer {
   observers: Map<Lifecycle, Function[]> = new Map();
@@ -11,10 +11,12 @@ export class Observer {
 
   trigger(event: Lifecycle, ...params: any): any[] {
     const functions = this.getEvent(event);
-    if (!functions) { return []; }
+    if (!functions) {
+      return [];
+    }
 
     const results = [];
-    functions.forEach(x => {
+    functions.forEach((x) => {
       const result = x(params);
       results.push(result);
     });
