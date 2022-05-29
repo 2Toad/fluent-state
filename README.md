@@ -28,9 +28,9 @@ fluentState
 fluentState
   .when('diced').do(() => console.log('diced'));
 
-fluenState.transition('diced');
+fluentState.transition('diced');
 // or
-fluenState.next();
+fluentState.next();
 ```
 
 ## API
