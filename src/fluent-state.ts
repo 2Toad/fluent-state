@@ -1,11 +1,13 @@
-import { State } from './state';
-import { Event } from './event';
-import { Observer } from './observer';
-import { Lifecycle } from './enums';
+import { State } from "./state";
+import { Event } from "./event";
+import { Observer } from "./observer";
+import { Lifecycle } from "./enums";
 
 export class FluentState {
   states: Map<string, State> = new Map();
+
   state: State;
+
   observer: Observer = new Observer();
 
   from(name: string): State {
@@ -24,12 +26,12 @@ export class FluentState {
   }
 
   transition(...names: string[]): boolean {
-    if (!names.length) { throw new Error('Please specify the state you wish to transition to'); }
+    if (!names.length) {
+      throw new Error("Please specify the state you wish to transition to");
+    }
 
     const previousState = this.state;
-    const nextState = names.length === 1
-      ? names[0]
-      : names[Math.floor(Math.random() * names.length)];
+    const nextState = names.length === 1 ? names[0] : names[Math.floor(Math.random() * names.length)];
 
     if (!this.can(nextState)) {
       this.observer.trigger(Lifecycle.TransitionFailed, previousState, nextState);
@@ -37,10 +39,12 @@ export class FluentState {
     }
 
     const results = this.observer.trigger(Lifecycle.BeforeTransition, previousState, nextState);
-    if (results.some(x => x === false)) { return false; }
+    if (results.some((x) => x === false)) {
+      return false;
+    }
 
     this.setState(nextState);
-    this.state.handlers.forEach(x => x(previousState, this));
+    this.state.handlers.forEach((x) => x(previousState, this));
 
     this.observer.trigger(Lifecycle.AfterTransition, previousState, this.state);
     return true;
@@ -53,7 +57,9 @@ export class FluentState {
 
   when(name: string): Event {
     const state = this._getState(name);
-    if (!state) { throw new Error(`Unknown state: "${name}"`); }
+    if (!state) {
+      throw new Error(`Unknown state: "${name}"`);
+    }
 
     return new Event(state);
   }
@@ -78,14 +84,18 @@ export class FluentState {
 
   setState(name: string): void {
     const state = this._getState(name);
-    if (!state) { throw new Error(`Invalid state "${name}"`); }
+    if (!state) {
+      throw new Error(`Invalid state "${name}"`);
+    }
 
     this.state = state;
   }
 
   _addState(name: string): State {
     let state = this._getState(name);
-    if (state) { return state; }
+    if (state) {
+      return state;
+    }
 
     state = new State(name, this);
     this.states.set(name, state);

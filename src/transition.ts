@@ -1,7 +1,8 @@
-import { State } from './state';
+import { State } from "./state";
 
 export class Transition {
   state: State;
+
   name: string;
 
   constructor(name: string, state: State) {

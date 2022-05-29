@@ -1,3 +1,12 @@
-tsconfig.json
+.github
 src
-.travis.yml
+tests
+.editorconfig
+.eslintcache
+.eslintignore
+.eslintrc.json
+.gitignore
+.nvmrc
+.prettierignore
+.prettierrc.json
+tsconfig.json
