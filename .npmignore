@@ -1,6 +1,7 @@
-.github
-src
-tests
+.github/
+.husky/
+src/
+tests/
 .editorconfig
 .eslintcache
 .eslintignore
