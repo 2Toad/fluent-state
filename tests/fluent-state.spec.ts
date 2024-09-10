@@ -95,6 +95,8 @@ describe("fluent-state", () => {
 
     it("should not transition to the next random state when all states have been excluded", () => {
       const fs = new FluentState();
+      // Disable state machine logging during this test
+      console.warn = function () {};
       fs.from("vegetable").to("diced").or("pickled");
 
       expect(fs.next("diced", "pickled")).to.equal(false);

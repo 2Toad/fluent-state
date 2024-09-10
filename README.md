@@ -1,8 +1,8 @@
-# Fluent State
+# Fluent State 🔄
 
-[![GitHub version](https://badge.fury.io/gh/2Toad%2Ffluent-state.svg)](https://badge.fury.io/gh/2Toad%2Ffluent-state)
+![GitHub Release](https://img.shields.io/github/v/release/2Toad/fluent-state)
 [![Downloads](https://img.shields.io/npm/dm/@2toad/fluent-state.svg)](https://www.npmjs.com/package/@2toad/fluent-state)
-[![Build status](https://github.com/2toad/profanity/actions/workflows/nodejs.yml/badge.svg)](https://github.com/2Toad/Profanity/actions/workflows/nodejs.yml)
+[![Build status](https://github.com/2toad/fluent-state/actions/workflows/ci.yml/badge.svg)](https://github.com/2Toad/fluent-state/actions/workflows/nodejs.yml)
 
 A fluent JavaScript State Machine (with TypeScript support)
 
@@ -19,8 +19,10 @@ npm i @2toad/fluent-state
 ```JavaScript
 import { fluentState } from '@2toad/fluent-state';
 // or
-var fluentState = require('@2toad/fluent-state').fluentState;
+const { fluentState } = require('@2toad/fluent-state');
+```
 
+```JavaScript
 fluentState
   .from('vegetable').to('diced').or('pickled')
   .from('diced').to('salad').or('trash');
@@ -188,3 +190,7 @@ fluentState
 1. BeforeTransition: (currentState: State, newState: string) => { /* return false to stop the lifecycle */ }
 2. TransitionFailed: (currentState: State, newState: string) => {}
 3. AfterTransition: (previousState: State, currentState: State) => {}
+
+## Contributing 🤝
+
+So you want to contribute to the Fluent State project? Fantastic! Please read the [Contribute](./contribute.md) doc to get started.
