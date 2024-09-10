@@ -17,7 +17,7 @@ export class Observer {
 
     const results = [];
     functions.forEach((x) => {
-      const result = x(params);
+      const result = x(...params);
       results.push(result);
     });
     return results;
