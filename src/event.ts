@@ -1,13 +1,10 @@
 import { FluentState } from "./fluent-state";
 import { State } from "./state";
 import { Handler } from "./handler";
+import { Lifecycle } from "./enums";
 
 export class Event {
-  state: State;
-
-  constructor(state: State) {
-    this.state = state;
-  }
+  constructor(public state: State) {}
 
   when(name: string): Event {
     const state = this.state.fluentState._getState(name);
@@ -19,7 +16,11 @@ export class Event {
   }
 
   do(handler: (previousState: State, fluentState: FluentState) => any): Handler {
-    this.state._addHandler(handler);
+    this.state.fluentState.observe(Lifecycle.AfterTransition, (prevState, currentState) => {
+      if (currentState.name === this.state.name) {
+        handler(prevState, this.state.fluentState);
+      }
+    });
     return new Handler(this);
   }
 }
