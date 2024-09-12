@@ -81,7 +81,7 @@ fluentState.setState('diced');
 
 > NOTE: the state is initially set to the first state you add via `from()`, and it is implicitly set when you transition to a new state via `transition()` or `next()`
 
-#### has(name: string): boolean {
+#### has(name: string): boolean
 Returns true if the state exists
 
 ```JavaScript
