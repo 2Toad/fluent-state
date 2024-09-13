@@ -8,7 +8,7 @@ export class Event {
   when(name: string): Event {
     const state = this.state.fluentState._getState(name);
     if (!state) {
-      throw new Error(`Unknown state: "${name}"`);
+      throw new Error(`When error: Unknown state: "${name}"`);
     }
 
     return new Event(state);

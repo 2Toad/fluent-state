@@ -36,7 +36,7 @@ export class LifecycleHandlerFactory {
       case Lifecycle.AfterTransition:
         return new AfterTransitionExecutor();
       default:
-        throw new Error(`Unknown lifecycle: ${event}`);
+        throw new Error(`Lifecycle Factory Error: Unknown lifecycle: ${event}`);
     }
   }
 }

@@ -46,7 +46,7 @@ export class FluentState {
    */
   transition(...names: string[]): boolean {
     if (!names.length) {
-      throw new Error("Please specify the state you wish to transition to");
+      throw new Error("Transition error: No target state specified");
     }
 
     const currentState = this.state;
@@ -87,7 +87,7 @@ export class FluentState {
   when(name: string): Event {
     const state = this._getState(name);
     if (!state) {
-      throw new Error(`Unknown state: "${name}"`);
+      throw new Error(`When error: Unknown state: "${name}"`);
     }
 
     return new Event(state);
@@ -114,7 +114,7 @@ export class FluentState {
   setState(name: string): State {
     const state = this._getState(name);
     if (!state) {
-      throw new Error(`Invalid state "${name}"`);
+      throw new Error(`SetState Error: Unknown state: "${name}"`);
     }
 
     this.state = state;
