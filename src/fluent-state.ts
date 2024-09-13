@@ -2,6 +2,7 @@ import { State } from "./state";
 import { Event } from "./event";
 import { Observer } from "./observer";
 import { Lifecycle } from "./enums";
+import { LifeCycleHandler } from "./types";
 
 export class FluentState {
   states: Map<string, State> = new Map();
@@ -25,28 +26,56 @@ export class FluentState {
     return this.state.can(name);
   }
 
+  /**
+   * Transitions to a new state.
+   *
+   * Lifecycle events within the transition process occur in this order:
+   * BeforeTransition -> FailedTransition -> AfterTransition -> State-specific handlers
+   *
+   * This order ensures that:
+   * 1. Pre-transition checks can be performed (BeforeTransition)
+   * 2. Failed transitions are properly handled (FailedTransition)
+   * 3. Post-transition logic is executed (AfterTransition)
+   * 4. State-specific actions are performed last
+   *
+   * This separation provides a clear distinction between the transition process itself
+   * and any side effects that should occur after entering a new state.
+   *
+   * @param names - The name(s) of the state(s) to transition to. If multiple are provided, one is chosen randomly.
+   * @returns true if the transition was successful, false otherwise.
+   */
   transition(...names: string[]): boolean {
     if (!names.length) {
       throw new Error("Please specify the state you wish to transition to");
     }
 
-    const previousState = this.state;
-    const nextState = names.length === 1 ? names[0] : names[Math.floor(Math.random() * names.length)];
+    const currentState = this.state;
+    const nextStateName = names.length === 1 ? names[0] : names[Math.floor(Math.random() * names.length)];
 
-    if (!this.can(nextState)) {
-      this.observer.trigger(Lifecycle.TransitionFailed, previousState, nextState);
+    // BeforeTransition must occur first to allow for any pre-transition logic or validation,
+    // and to provide an opportunity to cancel the transition if necessary.
+    const results = this.observer.trigger(Lifecycle.BeforeTransition, currentState, nextStateName);
+    if (results.includes(false)) {
       return false;
     }
 
-    const results = this.observer.trigger(Lifecycle.BeforeTransition, previousState, nextState);
-    if (results.some((x) => x === false)) {
+    // FailedTransition must occur next to allow for any failed transition logic, including whether
+    // the transition has been cancelled.
+    if (!this.can(nextStateName)) {
+      this.observer.trigger(Lifecycle.TransitionFailed, currentState, nextStateName);
       return false;
     }
 
-    this.setState(nextState);
-    this.state.handlers.forEach((x) => x(previousState, this));
+    const nextState = this.setState(nextStateName);
 
-    this.observer.trigger(Lifecycle.AfterTransition, previousState, this.state);
+    // AfterTransition is triggered after the state has changed but before any state-specific handlers.
+    // This allows for any general post-transition logic.
+    this.observer.trigger(Lifecycle.AfterTransition, currentState, nextState);
+
+    // State-specific handlers are executed last. These are defined using `when().do()` and
+    // are meant for actions that should occur specifically after entering this new state.
+    this.state.handlers.forEach((handler) => handler(currentState, nextState));
+
     return true;
   }
 
@@ -77,18 +106,19 @@ export class FluentState {
     return !!this._getState(name);
   }
 
-  observe(event: Lifecycle, handler: Function): FluentState {
+  observe(event: Lifecycle, handler: LifeCycleHandler): FluentState {
     this.observer.add(event, handler);
     return this;
   }
 
-  setState(name: string): void {
+  setState(name: string): State {
     const state = this._getState(name);
     if (!state) {
       throw new Error(`Invalid state "${name}"`);
     }
 
     this.state = state;
+    return state;
   }
 
   _addState(name: string): State {

@@ -3,7 +3,7 @@ import * as spies from "chai-spies";
 
 use(spies);
 
-import { FluentState } from "../src";
+import { FluentState, State } from "../src";
 import { Lifecycle } from "../src/enums";
 
 function setupBasicStateMachine(fs: FluentState) {
@@ -236,9 +236,9 @@ describe("fluent-state", () => {
       fs.from("vegetable").to("diced");
 
       let previousStateName, currentStateName;
-      fs.when("diced").do((prevState, currentState) => {
+      fs.when("diced").do((prevState: State, currentState: State) => {
         previousStateName = prevState.name;
-        currentStateName = currentState.state.name;
+        currentStateName = currentState.name;
       });
 
       fs.transition("diced");
@@ -294,7 +294,7 @@ describe("fluent-state", () => {
     it("should execute multiple observers in order", () => {
       fs.from("vegetable").to("diced");
 
-      const results = [];
+      const results: number[] = [];
       fs.observe(Lifecycle.BeforeTransition, () => results.push(1));
       fs.observe(Lifecycle.BeforeTransition, () => results.push(2));
       fs.observe(Lifecycle.AfterTransition, () => results.push(3));
@@ -312,6 +312,18 @@ describe("fluent-state", () => {
       expect(fs.transition("diced")).to.equal(false);
       expect(fs.state.name).to.equal("vegetable");
     });
+
+    it("should trigger TransitionFailed event when transitioning to an unknown state", () => {
+      fs.from("vegetable").to("diced");
+
+      fs.observe(Lifecycle.TransitionFailed, (currentState: State, targetState: string) => {
+        expect(currentState).to.deep.equal(fs.state);
+        expect(currentState.name).to.equal("vegetable");
+        expect(targetState).to.equal("unknown");
+      });
+
+      fs.transition("unknown");
+    });
   });
 
   describe("complex scenarios", () => {
@@ -320,28 +332,18 @@ describe("fluent-state", () => {
     });
 
     it("should handle a complex state machine with multiple transitions and callbacks", () => {
-      fs.from("raw")
-        .to("chopped")
-        .or("sliced")
-        .from("chopped")
-        .to("cooked")
-        .or("seasoned")
-        .from("sliced")
-        .to("fried")
-        .or("baked")
-        .from("cooked")
-        .to("served")
-        .from("seasoned")
-        .to("grilled")
-        .from("fried")
-        .to("served")
-        .from("baked")
-        .to("served")
-        .from("grilled")
-        .to("served");
+      // prettier-ignore
+      fs.from("raw").to("chopped").or("sliced")
+        .from("chopped").to("cooked").or("seasoned")
+        .from("sliced").to("fried").or("baked")
+        .from("cooked").to("served")
+        .from("seasoned").to("grilled")
+        .from("fried").to("served")
+        .from("baked").to("served")
+        .from("grilled").to("served");
 
       const stateHistory: string[] = [];
-      fs.observe(Lifecycle.AfterTransition, (prevState, currentState) => {
+      fs.observe(Lifecycle.AfterTransition, (_prevState: any, currentState: any) => {
         stateHistory.push(currentState.name);
       });
 

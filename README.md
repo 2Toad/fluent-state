@@ -187,9 +187,21 @@ fluentState
 
 #### Events
 
-1. BeforeTransition: (currentState: State, newState: string) => { /* return false to stop the lifecycle */ }
-2. TransitionFailed: (currentState: State, newState: string) => {}
-3. AfterTransition: (previousState: State, currentState: State) => {}
+**Order**: BeforeTransition -> FailedTransition -> AfterTransition
+
+- **BeforeTransition**
+  ```ts
+  (currentState: State, nextState: string): boolean
+  ```
+- **FailedTransition**
+  ```ts
+  (currentState: State, targetState: string): void
+  ```
+
+- **AfterTransition**
+  ```ts
+  (previousState: State, currentState: State): void
+  ```
 
 ## Contributing 🤝
 

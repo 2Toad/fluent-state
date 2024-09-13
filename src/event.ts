@@ -1,7 +1,6 @@
-import { FluentState } from "./fluent-state";
 import { State } from "./state";
 import { Handler } from "./handler";
-import { Lifecycle } from "./enums";
+import { EventHandler } from "./types";
 
 export class Event {
   constructor(public state: State) {}
@@ -15,12 +14,8 @@ export class Event {
     return new Event(state);
   }
 
-  do(handler: (previousState: State, fluentState: FluentState) => any): Handler {
-    this.state.fluentState.observe(Lifecycle.AfterTransition, (prevState, currentState) => {
-      if (currentState.name === this.state.name) {
-        handler(prevState, this.state.fluentState);
-      }
-    });
+  do(handler: EventHandler): Handler {
+    this.state._addHandler(handler);
     return new Handler(this);
   }
 }
