@@ -1,5 +1,5 @@
 export enum Lifecycle {
   BeforeTransition,
-  TransitionFailed,
+  FailedTransition,
   AfterTransition,
 }

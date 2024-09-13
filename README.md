@@ -180,8 +180,8 @@ fluentState.observe(Lifecycle.BeforeTransition, (currentState, newState) => {
 
 // Chainable
 fluentState
-  .observe(Lifecycle.TransitionFailed, () => console.log('Transition failed'))
-  .observe(Lifecycle.TransitionFailed, () => console.log('Multiple hooks allowed on each event'))
+  .observe(Lifecycle.FailedTransition, () => console.log('Transition failed'))
+  .observe(Lifecycle.FailedTransition, () => console.log('Multiple hooks allowed on each event'))
   .observe(Lifecycle.AfterTransition, () => console.log('Transition complete'));
 ```
 

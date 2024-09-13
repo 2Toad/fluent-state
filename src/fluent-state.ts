@@ -62,7 +62,7 @@ export class FluentState {
     // FailedTransition must occur next to allow for any failed transition logic, including whether
     // the transition has been cancelled.
     if (!this.can(nextStateName)) {
-      this.observer.trigger(Lifecycle.TransitionFailed, currentState, nextStateName);
+      this.observer.trigger(Lifecycle.FailedTransition, currentState, nextStateName);
       return false;
     }
 

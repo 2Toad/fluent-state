@@ -313,10 +313,10 @@ describe("fluent-state", () => {
       expect(fs.state.name).to.equal("vegetable");
     });
 
-    it("should trigger TransitionFailed event when transitioning to an unknown state", () => {
+    it("should trigger FailedTransition event when transitioning to an unknown state", () => {
       fs.from("vegetable").to("diced");
 
-      fs.observe(Lifecycle.TransitionFailed, (currentState: State, targetState: string) => {
+      fs.observe(Lifecycle.FailedTransition, (currentState: State, targetState: string) => {
         expect(currentState).to.deep.equal(fs.state);
         expect(currentState.name).to.equal("vegetable");
         expect(targetState).to.equal("unknown");

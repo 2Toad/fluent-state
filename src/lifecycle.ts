@@ -31,7 +31,7 @@ export class LifecycleHandlerFactory {
     switch (event) {
       case Lifecycle.BeforeTransition:
         return new BeforeTransitionExecutor();
-      case Lifecycle.TransitionFailed:
+      case Lifecycle.FailedTransition:
         return new FailedTransitionExecutor();
       case Lifecycle.AfterTransition:
         return new AfterTransitionExecutor();
