@@ -1,10 +1,10 @@
-# Fluent State
+# Fluent State 🔄
 
-[![GitHub version](https://badge.fury.io/gh/2Toad%2Ffluent-state.svg)](https://badge.fury.io/gh/2Toad%2Ffluent-state)
+![GitHub Release](https://img.shields.io/github/v/release/2Toad/fluent-state)
 [![Downloads](https://img.shields.io/npm/dm/@2toad/fluent-state.svg)](https://www.npmjs.com/package/@2toad/fluent-state)
-[![Build status](https://github.com/2toad/profanity/actions/workflows/nodejs.yml/badge.svg)](https://github.com/2Toad/Profanity/actions/workflows/nodejs.yml)
+[![Build status](https://github.com/2toad/fluent-state/actions/workflows/ci.yml/badge.svg)](https://github.com/2Toad/fluent-state/actions/workflows/nodejs.yml)
 
-A fluent JavaScript State Machine (with TypeScript support)
+A fluent JavaScript [State Machine](./state-machine.md) (with TypeScript support)
 
 ## Getting Started
 
@@ -19,8 +19,10 @@ npm i @2toad/fluent-state
 ```JavaScript
 import { fluentState } from '@2toad/fluent-state';
 // or
-var fluentState = require('@2toad/fluent-state').fluentState;
+const { fluentState } = require('@2toad/fluent-state');
+```
 
+```JavaScript
 fluentState
   .from('vegetable').to('diced').or('pickled')
   .from('diced').to('salad').or('trash');
@@ -79,7 +81,7 @@ fluentState.setState('diced');
 
 > NOTE: the state is initially set to the first state you add via `from()`, and it is implicitly set when you transition to a new state via `transition()` or `next()`
 
-#### has(name: string): boolean {
+#### has(name: string): boolean
 Returns true if the state exists
 
 ```JavaScript
@@ -178,13 +180,29 @@ fluentState.observe(Lifecycle.BeforeTransition, (currentState, newState) => {
 
 // Chainable
 fluentState
-  .observe(Lifecycle.TransitionFailed, () => console.log('Transition failed'))
-  .observe(Lifecycle.TransitionFailed, () => console.log('Multiple hooks allowed on each event'))
+  .observe(Lifecycle.FailedTransition, () => console.log('Transition failed'))
+  .observe(Lifecycle.FailedTransition, () => console.log('Multiple hooks allowed on each event'))
   .observe(Lifecycle.AfterTransition, () => console.log('Transition complete'));
 ```
 
 #### Events
 
-1. BeforeTransition: (currentState: State, newState: string) => { /* return false to stop the lifecycle */ }
-2. TransitionFailed: (currentState: State, newState: string) => {}
-3. AfterTransition: (previousState: State, currentState: State) => {}
+**Order**: BeforeTransition -> FailedTransition -> AfterTransition
+
+- **BeforeTransition**
+  ```ts
+  (currentState: State, nextState: string): boolean
+  ```
+- **FailedTransition**
+  ```ts
+  (currentState: State, targetState: string): void
+  ```
+
+- **AfterTransition**
+  ```ts
+  (previousState: State, currentState: State): void
+  ```
+
+## Contributing 🤝
+
+So you want to contribute to the Fluent State project? Fantastic! Please read the [Contribute](./contribute.md) doc to get started.

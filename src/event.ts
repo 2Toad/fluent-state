@@ -1,24 +1,20 @@
-import { FluentState } from "./fluent-state";
 import { State } from "./state";
 import { Handler } from "./handler";
+import { EventHandler } from "./types";
 
 export class Event {
-  state: State;
-
-  constructor(state: State) {
-    this.state = state;
-  }
+  constructor(public state: State) {}
 
   when(name: string): Event {
     const state = this.state.fluentState._getState(name);
     if (!state) {
-      throw new Error(`Unknown state: "${name}"`);
+      throw new Error(`When error: Unknown state: "${name}"`);
     }
 
     return new Event(state);
   }
 
-  do(handler: (previousState: State, fluentState: FluentState) => any): Handler {
+  do(handler: EventHandler): Handler {
     this.state._addHandler(handler);
     return new Handler(this);
   }

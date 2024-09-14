@@ -1,6 +1,5 @@
-import { FluentState } from "./fluent-state";
 import { Event } from "./event";
-import { State } from "./state";
+import { EventHandler } from "./types";
 
 export class Handler {
   event: Event;
@@ -13,7 +12,7 @@ export class Handler {
     return this.event.when(name);
   }
 
-  and(handler: (previousState: State, fluentState: FluentState) => any): Handler {
+  and(handler: EventHandler): Handler {
     return this.event.do(handler);
   }
 }

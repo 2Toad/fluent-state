@@ -1,5 +1,6 @@
 import { FluentState } from "./fluent-state";
 import { Transition } from "./transition";
+import { EventHandler } from "./types";
 
 export class State {
   fluentState: FluentState;
@@ -8,7 +9,7 @@ export class State {
 
   transitions: string[] = [];
 
-  handlers: Function[] = [];
+  handlers: EventHandler[] = [];
 
   constructor(name: string, fluentState: FluentState) {
     this.fluentState = fluentState;
@@ -37,10 +38,11 @@ export class State {
     }
 
     const index = Math.floor(Math.random() * transitions.length);
+    // eslint-disable-next-line security/detect-object-injection -- index is safely generated and transitions array is internal
     return transitions[index];
   }
 
-  _addHandler(handler: Function): void {
+  _addHandler(handler: EventHandler): void {
     this.handlers.push(handler);
   }
 
