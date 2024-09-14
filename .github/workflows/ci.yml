@@ -2,6 +2,7 @@
 # created or a commit is pushed to a Prod branch
 
 name: CI
+
 on:
   push:
     branches: ["master"]
