@@ -7,7 +7,9 @@ import { FluentState, State } from "../src";
 import { Lifecycle } from "../src/enums";
 
 function setupBasicStateMachine(fs: FluentState) {
-  fs.from("vegetable").to("diced").or("pickled").from("diced").to("salad").or("trash");
+  // prettier-ignore
+  fs.from("vegetable").to("diced").or("pickled")
+    .from("diced").to("salad").or("trash");
 }
 
 describe("fluent-state", () => {
@@ -61,7 +63,9 @@ describe("fluent-state", () => {
     });
 
     it("should create multiple states and transitions", () => {
-      fs.from("vegetable").to("diced").or("pickled").from("diced").to("salad").or("trash");
+      // prettier-ignore
+      fs.from("vegetable").to("diced").or("pickled")
+        .from("diced").to("salad").or("trash");
 
       expect(fs.has("vegetable")).to.equal(true);
       expect(fs.has("diced")).to.equal(true);
@@ -76,6 +80,71 @@ describe("fluent-state", () => {
 
       const state = fs._getState("vegetable");
       expect(state.transitions.length).to.equal(2);
+    });
+  });
+
+  describe("state removal", () => {
+    it("should remove a state and update transitions correctly", () => {
+      fs.from("vegetable").to("diced").or("pickled");
+
+      fs.remove("vegetable");
+
+      expect(fs.state.name).to.equal("diced");
+      expect(fs.has("vegetable")).to.be.false;
+      expect(fs.has("diced")).to.be.true;
+      expect(fs.has("pickled")).to.be.true;
+
+      // After removing "vegetable", "diced" and "pickled" should not have any transitions
+      expect(fs._getState("diced").transitions).to.be.empty;
+      expect(fs._getState("pickled").transitions).to.be.empty;
+
+      // Transition to "pickled" should fail now
+      expect(fs.transition("pickled")).to.be.false;
+      expect(fs.state.name).to.equal("diced");
+
+      // We can add a new transition
+      fs.from("diced").to("fried");
+      expect(fs.transition("fried")).to.be.true;
+      expect(fs.state.name).to.equal("fried");
+    });
+
+    it("should remove a state and update transitions correctly when multiple transitions exist", () => {
+      // prettier-ignore
+      fs.from("vegetable").to("diced")
+        .from("diced").to("pickled");
+
+      expect(fs._getState("vegetable").transitions).to.deep.equal(["diced"]);
+      expect(fs._getState("diced").transitions).to.deep.equal(["pickled"]);
+      expect(fs._getState("pickled").transitions).to.be.empty;
+
+      fs.remove("vegetable");
+
+      expect(fs.state.name).to.equal("diced");
+      expect(fs.has("vegetable")).to.be.false;
+      expect(fs.has("diced")).to.be.true;
+      expect(fs.has("pickled")).to.be.true;
+
+      expect(fs._getState("diced").transitions).to.deep.equal(["pickled"]);
+      expect(fs._getState("pickled").transitions).to.be.empty;
+    });
+
+    it("should remove an intermediate state and update transitions correctly", () => {
+      // prettier-ignore
+      fs.from("vegetable").to("diced")
+        .from("diced").to("pickled");
+
+      expect(fs._getState("vegetable").transitions).to.deep.equal(["diced"]);
+      expect(fs._getState("diced").transitions).to.deep.equal(["pickled"]);
+      expect(fs._getState("pickled").transitions).to.be.empty;
+
+      fs.remove("diced");
+
+      expect(fs.state.name).to.equal("vegetable");
+      expect(fs.has("vegetable")).to.be.true;
+      expect(fs.has("diced")).to.be.false;
+      expect(fs.has("pickled")).to.be.true;
+
+      expect(fs._getState("vegetable").transitions).to.be.empty;
     });
   });
 
@@ -302,6 +371,21 @@ describe("fluent-state", () => {
       fs.transition("diced");
 
       expect(results).to.deep.equal([1, 2, 3]);
+    });
+
+    it("should execute multiple observers for the same lifecycle event", () => {
+      const results: string[] = [];
+      fs.from("vegetable").to("diced");
+
+      fs.observe(Lifecycle.AfterTransition, () => {
+        results.push("observer1");
+      });
+      fs.observe(Lifecycle.AfterTransition, () => {
+        results.push("observer2");
+      });
+
+      fs.transition("diced");
+      expect(results).to.deep.equal(["observer1", "observer2"]);
     });
 
     it("should stop transition if BeforeTransition observer returns false", () => {
