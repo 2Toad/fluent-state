@@ -126,6 +126,9 @@ describe("fluent-state", () => {
 
       expect(fs._getState("diced").transitions).to.deep.equal(["pickled"]);
       expect(fs._getState("pickled").transitions).to.be.empty;
+
+      expect(fs.transition("pickled")).to.be.true;
+      expect(fs.state.name).to.equal("pickled");
     });
 
     it("should remove an intermediate state and update transitions correctly", () => {
@@ -145,6 +148,12 @@ describe("fluent-state", () => {
       expect(fs.has("pickled")).to.be.true;
 
       expect(fs._getState("vegetable").transitions).to.be.empty;
+
+      expect(fs.next()).to.be.false;
+      expect(fs.state.name).to.equal("vegetable");
+
+      expect(fs.transition("pickled")).to.be.false;
+      expect(fs.state.name).to.equal("vegetable");
     });
   });
 
