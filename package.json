@@ -1,6 +1,6 @@
 {
   "name": "@2toad/fluent-state",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "A fluent JavaScript State Machine (with TypeScript support)",
   "homepage": "https://github.com/2Toad/fluent-state",
   "author": "2Toad",
