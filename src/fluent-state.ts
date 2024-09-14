@@ -94,7 +94,21 @@ export class FluentState {
   }
 
   remove(name: string): void {
+    const stateToRemove = this._getState(name);
+    if (!stateToRemove) return;
+
     this.states.delete(name);
+
+    // Remove all transitions to this state from other states
+    this.states.forEach((state) => {
+      state.transitions = state.transitions.filter((transition) => transition !== name);
+    });
+
+    // If we're removing the current state, set the current state to the next available state
+    if (this.state === stateToRemove) {
+      const nextState = this.states.values().next().value;
+      this.state = nextState || null;
+    }
   }
 
   clear(): void {
