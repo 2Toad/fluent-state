@@ -4,7 +4,7 @@
 [![Downloads](https://img.shields.io/npm/dm/@2toad/fluent-state.svg)](https://www.npmjs.com/package/@2toad/fluent-state)
 [![Build status](https://github.com/2toad/fluent-state/actions/workflows/ci.yml/badge.svg)](https://github.com/2Toad/fluent-state/actions/workflows/nodejs.yml)
 
-A fluent JavaScript [State Machine](./state-machine.md) (with TypeScript support)
+A fluent JavaScript [State Machine](./state-machine.md) with full TypeScript support
 
 ## Getting Started
 
