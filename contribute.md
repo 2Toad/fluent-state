@@ -8,7 +8,7 @@ Thank you for wanting to contribute to the Fluent State project. With your contr
    1. Always work off of an Issue. Please do not submit a Pull Request that is not associated with an Issue (create the Issue if necessary).
    2. If you are beginning work on an Issue, please leave a comment on the issue letting us know, and we'll assign the Issue to you. This way somebody else won't start working on the same Issue.
 2. [Branches](https://github.com/2Toad/fluent-state/branches):
-   1. Always branch off of `master`, which contains the latest version of Fluent State
+   1. Always branch off of `main`, which contains the latest version of Fluent State
 3. [Pull Request](https://github.com/2Toad/fluent-state/pulls) (PR):
    1. Make sure you run the following scripts in local, and that all of them pass, before submitting a PR:
       1. `npm run lint:fix`
@@ -72,7 +72,7 @@ The Fluent State project includes Husky for running Git Hooks. Running `git comm
 Deployments to Prod consist of building and publishing the Fluent State lib to NPM, and are automated through our Continuous Deployment workflow.
 
 #### 1. Create New Version
-1. Checkout `master`.
+1. Checkout `main`.
 2. Increment the version in package.json, using semantic versioning (e.g., `1.1.0`).
 3. Rebuild package-lock, to pick up the new version number: `npm i --package-lock-only`.
 4. Push changes:
@@ -90,7 +90,7 @@ Deployments to Prod consist of building and publishing the Fluent State lib to N
 1. Navigate to [Fluent State's releases](https://github.com/2Toad/fluent-state/releases).
 2. Click "Draft a new release":
    - **Choose a tag**: enter version (e.g., `v1.1.0`) and click "Create new tag"
-   - **Target**: `master`
+   - **Target**: `main`
    - **Previous tag**: `auto`
    - **Release title**: (e.g., `1.1.0`)
    - **Description**: click the "Generate release notes"
