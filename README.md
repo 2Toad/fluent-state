@@ -4,7 +4,7 @@
 [![Downloads](https://img.shields.io/npm/dm/@2toad/fluent-state.svg)](https://www.npmjs.com/package/@2toad/fluent-state)
 [![Build status](https://github.com/2toad/fluent-state/actions/workflows/ci.yml/badge.svg)](https://github.com/2Toad/fluent-state/actions/workflows/nodejs.yml)
 
-A fluent JavaScript [State Machine](./state-machine.md) with full TypeScript support
+A fluent JavaScript State Machine with full TypeScript support
 
 ## Getting Started
 
@@ -202,6 +202,10 @@ fluentState
   ```ts
   (previousState: State, currentState: State): void
   ```
+
+## Further Reading
+
+Fluent State is a non-hierarchial state machine. For more information on its architecture and how it operates, please refer to the [State Machine](./state-machine.md) documentation.
 
 ## Contributing 🤝
 
