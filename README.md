@@ -161,6 +161,26 @@ fluentState
   });
 ```
 
+#### onEnter/onExit Hooks
+You can add enter/exit hooks directly to states
+
+```JavaScript
+fluentState
+  .from('vegetable')
+  .onEnter((previousState, currentState) => console.log(`Entering from ${previousState.name}`))
+  .onExit((currentState, nextState) => console.log(`Exiting to ${nextState.name}`))
+  .to('diced');
+```
+
+Multiple hooks are supported:
+```JavaScript
+fluentState
+  .from('vegetable')
+  .onEnter(() => console.log('First enter hook'))
+  .onEnter(() => console.log('Second enter hook'))
+  .to('diced');
+```
+
 > And of course it's all chainable
 
 ```JavaScript
