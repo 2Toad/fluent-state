@@ -22,6 +22,20 @@ export class FluentState {
     return state;
   }
 
+  /**
+   * Starts the state machine and triggers the initial state.
+   * This method should be called after all states have been defined and transitions have been configured.
+   * It will trigger the `onEnter` and `AfterTransition` events for the initial state.
+   */
+  start(): FluentState {
+    if (this.state) {
+      this.state._triggerEnter(null);
+      this.observer.trigger(Lifecycle.AfterTransition, null, this.state);
+      this.state.handlers.forEach((handler) => handler(null, this.state));
+    }
+    return this;
+  }
+
   can(name: string): boolean {
     return this.state.can(name);
   }
@@ -66,7 +80,15 @@ export class FluentState {
       return false;
     }
 
-    const nextState = this.setState(nextStateName);
+    const nextState = this._getState(nextStateName);
+
+    // Trigger exit hook before state change
+    currentState._triggerExit(nextState);
+
+    this.setState(nextStateName);
+
+    // Trigger enter hook after state change but before AfterTransition
+    nextState._triggerEnter(currentState);
 
     // AfterTransition is triggered after the state has changed but before any state-specific handlers.
     // This allows for any general post-transition logic.

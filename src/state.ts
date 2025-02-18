@@ -1,6 +1,6 @@
 import { FluentState } from "./fluent-state";
 import { Transition } from "./transition";
-import { EventHandler } from "./types";
+import { EventHandler, EnterEventHandler, ExitEventHandler } from "./types";
 
 export class State {
   fluentState: FluentState;
@@ -10,6 +10,8 @@ export class State {
   transitions: string[] = [];
 
   handlers: EventHandler[] = [];
+  enterEventHandlers: EnterEventHandler[] = [];
+  exitEventHandlers: ExitEventHandler[] = [];
 
   constructor(name: string, fluentState: FluentState) {
     this.fluentState = fluentState;
@@ -23,6 +25,40 @@ export class State {
 
   can(name: string): boolean {
     return this.hasTransition(name);
+  }
+
+  onEnter(handler: EnterEventHandler): State {
+    this._addEnterHandler(handler);
+    return this;
+  }
+
+  onExit(handler: ExitEventHandler): State {
+    this._addExitHandler(handler);
+    return this;
+  }
+
+  private hasTransition(name: string): boolean {
+    return this.transitions.indexOf(name) >= 0;
+  }
+
+  _triggerEnter(previousState: State): void {
+    this.enterEventHandlers.forEach((handler) => handler(previousState, this));
+  }
+
+  _triggerExit(nextState: State): void {
+    this.exitEventHandlers.forEach((handler) => handler(this, nextState));
+  }
+
+  _addHandler(handler: EventHandler): void {
+    this.handlers.push(handler);
+  }
+
+  _addEnterHandler(handler: EnterEventHandler): void {
+    this.enterEventHandlers.push(handler);
+  }
+
+  _addExitHandler(handler: ExitEventHandler): void {
+    this.exitEventHandlers.push(handler);
   }
 
   _getRandomTransition(exclude: string[] = []): string {
@@ -42,10 +78,6 @@ export class State {
     return transitions[index];
   }
 
-  _addHandler(handler: EventHandler): void {
-    this.handlers.push(handler);
-  }
-
   _addTransition(name: string): Transition {
     const transition = new Transition(name, this);
 
@@ -54,9 +86,5 @@ export class State {
     }
 
     return transition;
-  }
-
-  private hasTransition(name: string): boolean {
-    return this.transitions.indexOf(name) >= 0;
   }
 }
