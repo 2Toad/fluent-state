@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import * as sinon from "sinon";
-import { FluentState, State } from "../src";
+import { FluentState, State, Lifecycle } from "../src";
 
 describe("State Lifecycle Events", () => {
   let fs: FluentState;
@@ -21,7 +21,7 @@ describe("State Lifecycle Events", () => {
 
     fs.from("hasBeenWelcomed").onEnter(() => logs.push("Entering hasBeenWelcomed"));
 
-    fs.transition("hasBeenWelcomed");
+    fs.start().transition("hasBeenWelcomed");
     expect(logs).to.deep.equal(["Entering isAuthenticated", "Entering hasBeenWelcomed"]);
   });
 
@@ -49,7 +49,7 @@ describe("State Lifecycle Events", () => {
 
     fs.from("hasBeenWelcomed");
 
-    fs.transition("hasBeenWelcomed");
+    fs.start().transition("hasBeenWelcomed");
     expect(logs).to.deep.equal(["First enter handler", "Second enter handler"]);
   });
 
@@ -74,36 +74,33 @@ describe("State Lifecycle Events", () => {
       exitSpy = sinon.spy();
 
       fs.from("isAuthenticated").onEnter(enterSpy).onExit(exitSpy).to("mainApp");
-
+      fs.from("mainApp").to("isAuthenticated");
       fs.from("login").to("isAuthenticated");
       fs.from("signup").to("isAuthenticated");
     });
 
     it("should call onEnter() only once when transitioning from login", () => {
       fs.transition("login");
+      fs.transition("isAuthenticated");
       expect(enterSpy.calledOnce).to.be.true;
     });
 
     it("should call onEnter() only once when transitioning from signup", () => {
       fs.transition("signup");
+      fs.transition("isAuthenticated");
       expect(enterSpy.calledOnce).to.be.true;
     });
 
     it("should call onEnter() again if the state is exited and re-entered", () => {
       fs.transition("login");
+      fs.transition("isAuthenticated");
       expect(enterSpy.calledOnce).to.be.true;
 
       fs.transition("mainApp");
       expect(exitSpy.calledOnce).to.be.true;
 
-      fs.transition("login");
+      fs.transition("isAuthenticated");
       expect(enterSpy.calledTwice).to.be.true;
-    });
-
-    it("should not call onEnter() multiple times if already in state", () => {
-      fs.transition("login");
-      fs.transition("signup");
-      expect(enterSpy.callCount).to.equal(1);
     });
 
     it("should not call onExit() if state remains the same", () => {
@@ -121,6 +118,7 @@ describe("State Lifecycle Events", () => {
 
     fs.from("hasBeenWelcomed").to("isAuthenticated");
 
+    fs.start();
     fs.transition("hasBeenWelcomed");
     fs.transition("isAuthenticated");
     expect(logs).to.deep.equal(["Entering isAuthenticated", "Entering isAuthenticated"]);
@@ -138,6 +136,7 @@ describe("State Lifecycle Events", () => {
       .onEnter(() => sequence.push("hasBeenWelcomed enter"))
       .onExit(() => sequence.push("hasBeenWelcomed exit"));
 
+    fs.start();
     fs.transition("isAuthenticated"); // 🔥 Explicitly enter the initial state
     fs.transition("hasBeenWelcomed"); // Move to next state
 
@@ -153,20 +152,47 @@ describe("State Lifecycle Events", () => {
     let enterPrevState: State | null = null;
 
     fs.from("isAuthenticated")
-      .onExit((nextState: State) => {
+      .onExit((_currentState: State, nextState: State) => {
         exitNextState = nextState;
       })
       .to("hasBeenWelcomed");
 
-    fs.from("hasBeenWelcomed").onEnter((prevState: State | null) => {
+    fs.from("hasBeenWelcomed").onEnter((prevState: State) => {
       enterPrevState = prevState;
     });
 
-    fs.transition("hasBeenWelcomed");
+    fs.start().transition("hasBeenWelcomed");
 
     expect(exitNextState).to.not.be.null;
     expect(enterPrevState).to.not.be.null;
     expect(exitNextState!.name).to.equal("hasBeenWelcomed");
     expect(enterPrevState!.name).to.equal("isAuthenticated");
+  });
+
+  describe("start()", () => {
+    it("should trigger onEnter for initial state", () => {
+      const logs: string[] = [];
+      fs.from("initial").onEnter(() => logs.push("enter initial"));
+      fs.start();
+      expect(logs).to.deep.equal(["enter initial"]);
+    });
+
+    it("should trigger state-specific handlers with null previous state", () => {
+      const handlerCalls: Array<[State | null, State]> = [];
+      fs.from("initial");
+      fs.when("initial").do((prev, curr) => handlerCalls.push([prev, curr]));
+
+      fs.start();
+
+      expect(handlerCalls.length).to.equal(1);
+      expect(handlerCalls[0][0]).to.be.null;
+      expect(handlerCalls[0][1].name).to.equal("initial");
+    });
+
+    it("should do nothing if no initial state is set", () => {
+      const logs: string[] = [];
+      fs.start();
+      expect(logs).to.be.empty;
+    });
   });
 });

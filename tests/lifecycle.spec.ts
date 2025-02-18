@@ -98,4 +98,53 @@ describe("Lifecycle Events", () => {
     fs.transition("diced");
     expect(results).to.deep.equal(["complete"]);
   });
+
+  describe("start()", () => {
+    it("should trigger lifecycle events in correct order", () => {
+      const sequence: string[] = [];
+      const state = fs.from("initial");
+
+      fs.observe(Lifecycle.BeforeTransition, () => sequence.push("before")).observe(Lifecycle.AfterTransition, () => sequence.push("after"));
+
+      state.onEnter(() => sequence.push("enter"));
+      fs.when("initial").do(() => sequence.push("handler"));
+
+      fs.start();
+      expect(sequence).to.deep.equal(["enter", "after", "handler"]);
+    });
+
+    it("should execute multiple observers for each lifecycle event", () => {
+      const sequence: string[] = [];
+      fs.from("initial");
+
+      fs.observe(Lifecycle.AfterTransition, () => sequence.push("after1")).observe(Lifecycle.AfterTransition, () => sequence.push("after2"));
+
+      fs.start();
+      expect(sequence).to.deep.equal(["after1", "after2"]);
+    });
+
+    it("should trigger AfterTransition with null previous state", () => {
+      const transitions: Array<[State | null, State]> = [];
+      fs.observe(Lifecycle.AfterTransition, (prev, curr) => transitions.push([prev, curr]));
+
+      fs.from("initial");
+      fs.start();
+
+      expect(transitions.length).to.equal(1);
+      expect(transitions[0][0]).to.be.null;
+      expect(transitions[0][1].name).to.equal("initial");
+    });
+
+    it("should support chaining multiple observers", () => {
+      const results: string[] = [];
+      fs.from("initial");
+
+      fs.observe(Lifecycle.AfterTransition, () => results.push("first"))
+        .observe(Lifecycle.AfterTransition, () => results.push("second"))
+        .observe(Lifecycle.AfterTransition, () => results.push("third"));
+
+      fs.start();
+      expect(results).to.deep.equal(["first", "second", "third"]);
+    });
+  });
 });
