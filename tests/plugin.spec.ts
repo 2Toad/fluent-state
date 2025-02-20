@@ -1,6 +1,7 @@
 import { fluentState, FluentState } from "../src/fluent-state";
 import { Lifecycle } from "../src/enums";
 import { expect } from "chai";
+import { State } from "../src/state";
 
 describe("Plugin System", () => {
   beforeEach(() => {
@@ -154,6 +155,38 @@ describe("Plugin System", () => {
       fluentState.use(validPlugin);
 
       expect(secondPluginExecuted).to.be.true;
+    });
+  });
+
+  describe("Middleware Plugins", () => {
+    it("should wait for multiple async middlewares in correct order", async () => {
+      const executionOrder: string[] = [];
+
+      const asyncMiddleware1 = async (prev: State | null, next: string, transition: () => void) => {
+        executionOrder.push("middleware1 start");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        executionOrder.push("middleware1 end");
+        transition();
+      };
+
+      const asyncMiddleware2 = async (prev: State | null, next: string, transition: () => void) => {
+        executionOrder.push("middleware2 start");
+        await new Promise((resolve) => setTimeout(resolve, 25)); // shorter delay
+        executionOrder.push("middleware2 end");
+        transition();
+      };
+
+      fluentState.use(asyncMiddleware1).use(asyncMiddleware2);
+
+      fluentState.from("start").to("end");
+
+      fluentState.when("end").do(() => {
+        executionOrder.push("transition complete");
+      });
+
+      await fluentState.transition("end");
+
+      expect(executionOrder).to.deep.equal(["middleware1 start", "middleware1 end", "middleware2 start", "middleware2 end", "transition complete"]);
     });
   });
 });
