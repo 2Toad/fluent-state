@@ -22,6 +22,16 @@ export class Observer {
     return handlers.map((handler) => executor.execute(handler, prevState, currentState));
   }
 
+  remove(event: Lifecycle, handler: LifeCycleHandler): void {
+    const handlers = this.getEvent(event);
+    if (handlers) {
+      this.observers.set(
+        event,
+        handlers.filter((h) => h !== handler),
+      );
+    }
+  }
+
   private getEvent(name: Lifecycle): LifeCycleHandler[] | undefined {
     return this.observers.get(name);
   }

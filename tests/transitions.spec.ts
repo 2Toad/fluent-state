@@ -118,4 +118,22 @@ describe("Transitions", () => {
       expect(fs.state.name).to.equal("diced");
     });
   });
+
+  describe("Edge Cases for State Transitions", () => {
+    it("should handle transitions with no available states", () => {
+      const fs = new FluentState();
+      expect(fs.transition("nonexistent")).to.be.false;
+    });
+
+    it("should handle circular state transitions", () => {
+      const fs = new FluentState();
+      fs.from("A").to("B").from("B").to("A");
+
+      expect(fs.transition("B")).to.be.true;
+      expect(fs.state.name).to.equal("B");
+
+      expect(fs.transition("A")).to.be.true;
+      expect(fs.state.name).to.equal("A");
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { FluentState } from "../src";
+import { TransitionError } from "../src/types";
 
 describe("Error Handling", () => {
   let fs: FluentState;
@@ -41,6 +42,6 @@ describe("Error Handling", () => {
 
   it("should throw an error when transitioning without a target state", () => {
     fs.from("vegetable").to("diced");
-    expect(() => fs.transition()).to.throw("Transition error: No target state specified");
+    expect(() => fs.transition()).to.throw(TransitionError, "No target state specified");
   });
 });
