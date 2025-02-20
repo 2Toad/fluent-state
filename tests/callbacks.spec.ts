@@ -1,8 +1,6 @@
-import { expect, use, spy } from "chai";
-import * as spies from "chai-spies";
+import { expect } from "chai";
+import { spy } from "sinon";
 import { FluentState, State } from "../src";
-
-use(spies);
 
 describe("Callbacks", () => {
   let fs: FluentState;
@@ -15,7 +13,7 @@ describe("Callbacks", () => {
     fs.clear();
   });
 
-  it("should add a callback", () => {
+  it("should add a callback", async () => {
     fs.from("vegetable").to("diced");
 
     let result = false;
@@ -23,12 +21,11 @@ describe("Callbacks", () => {
       result = true;
     });
 
-    fs.transition("diced");
-
+    await fs.transition("diced");
     expect(result).to.equal(true);
   });
 
-  it("should add multiple callbacks", () => {
+  it("should add multiple callbacks", async () => {
     fs.from("vegetable").to("diced");
 
     let result1 = false;
@@ -41,44 +38,53 @@ describe("Callbacks", () => {
         result2 = true;
       });
 
-    fs.transition("diced");
-
+    await fs.transition("diced");
     expect(result1).to.equal(true);
     expect(result2).to.equal(true);
   });
 
-  it("should execute callbacks in order", () => {
+  it("should execute callbacks in order", async () => {
     const calls: number[] = [];
+    const addToCallOrder = (num: number): void => {
+      calls.push(num);
+    };
 
-    const callback1 = spy(() => calls.push(1));
-    const callback2 = spy(() => calls.push(2));
+    const callback1 = spy();
+    const callback2 = spy();
 
     fs.from("vegetable").to("diced");
-    fs.when("diced").do(callback1).and(callback2);
+    fs.when("diced")
+      .do(async () => {
+        callback1();
+        addToCallOrder(1);
+      })
+      .and(async () => {
+        callback2();
+        addToCallOrder(2);
+      });
 
-    fs.transition("diced");
-
-    expect(callback1).to.have.been.called();
-    expect(callback2).to.have.been.called();
+    await fs.transition("diced");
+    expect(callback1.callCount).to.equal(1);
+    expect(callback2.callCount).to.equal(1);
     expect(calls).to.deep.equal([1, 2]);
   });
 
-  it("should execute callbacks with correct parameters", () => {
+  it("should execute callbacks with correct parameters", async () => {
     fs.from("vegetable").to("diced");
 
-    let previousStateName, currentStateName;
+    let previousStateName: string | undefined;
+    let currentStateName: string | undefined;
     fs.when("diced").do((prevState: State, currentState: State) => {
       previousStateName = prevState.name;
       currentStateName = currentState.name;
     });
 
-    fs.transition("diced");
-
+    await fs.transition("diced");
     expect(previousStateName).to.equal("vegetable");
     expect(currentStateName).to.equal("diced");
   });
 
-  it("should chain multiple callback definitions", () => {
+  it("should chain multiple callback definitions", async () => {
     fs.from("vegetable").to("diced").or("pickled");
     fs.from("diced").to("pickled");
 
@@ -86,15 +92,19 @@ describe("Callbacks", () => {
     let pickled = false;
 
     fs.when("diced")
-      .do(() => (diced = true))
+      .do(() => {
+        diced = true;
+      })
       .when("pickled")
-      .do(() => (pickled = true));
+      .do(() => {
+        pickled = true;
+      });
 
-    fs.transition("diced");
+    await fs.transition("diced");
     expect(diced).to.equal(true);
     expect(pickled).to.equal(false);
 
-    fs.transition("pickled");
+    await fs.transition("pickled");
     expect(pickled).to.equal(true);
   });
 });

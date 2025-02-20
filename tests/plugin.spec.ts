@@ -19,7 +19,7 @@ describe("Plugin System", () => {
       expect(pluginExecuted).to.be.true;
     });
 
-    it("should allow plugins to extend FluentState functionality", () => {
+    it("should allow plugins to extend FluentState functionality", async () => {
       const counterPlugin = (fsm: FluentState) => {
         let transitionCount = 0;
         fsm.observe(Lifecycle.AfterTransition, () => {
@@ -35,23 +35,26 @@ describe("Plugin System", () => {
       fluentState.from("start").to("middle");
       fluentState.from("middle").to("end");
 
-      fluentState.transition("middle");
-      fluentState.transition("end");
+      await fluentState.transition("middle");
+      await fluentState.transition("end");
 
       expect((fluentState as any).getTransitionCount()).to.equal(2);
     });
 
     it("should support chaining multiple plugins", () => {
       const executionOrder: number[] = [];
+      const addToOrder = (num: number): void => {
+        executionOrder.push(num);
+      };
 
       const plugin1 = () => {
-        executionOrder.push(1);
+        addToOrder(1);
       };
       const plugin2 = () => {
-        executionOrder.push(2);
+        addToOrder(2);
       };
       const plugin3 = () => {
-        executionOrder.push(3);
+        addToOrder(3);
       };
 
       fluentState.use(plugin1).use(plugin2).use(plugin3);
@@ -74,7 +77,7 @@ describe("Plugin System", () => {
       expect(installExecuted).to.be.true;
     });
 
-    it("should allow object plugins to maintain internal state", () => {
+    it("should allow object plugins to maintain internal state", async () => {
       const stateTrackingPlugin = {
         transitions: [] as string[],
         install: (fsm: FluentState) => {
@@ -90,37 +93,40 @@ describe("Plugin System", () => {
       fluentState.from("start").to("middle");
       fluentState.from("middle").to("end");
 
-      fluentState.start();
-      fluentState.transition("middle");
-      fluentState.transition("end");
+      await fluentState.start();
+      await fluentState.transition("middle");
+      await fluentState.transition("end");
 
       expect(stateTrackingPlugin.transitions).to.deep.equal(["null -> start", "start -> middle", "middle -> end"]);
     });
 
     it("should support mixing function and object plugins", () => {
       const executionOrder: string[] = [];
+      const addToOrder = (item: string): void => {
+        executionOrder.push(item);
+      };
 
       const functionPlugin = () => {
-        executionOrder.push("function");
+        addToOrder("function");
       };
 
       const objectPlugin = {
         install: () => {
-          executionOrder.push("object");
+          addToOrder("object");
         },
       };
 
       fluentState
         .use(functionPlugin)
         .use(objectPlugin)
-        .use(() => executionOrder.push("inline"));
+        .use(() => addToOrder("inline"));
 
       expect(executionOrder).to.deep.equal(["function", "object", "inline"]);
     });
   });
 
   describe("Plugin Error Handling", () => {
-    it("should not affect state machine if plugin throws", () => {
+    it("should not affect state machine if plugin throws", async () => {
       const errorPlugin = () => {
         throw new Error("Plugin error");
       };
@@ -129,7 +135,8 @@ describe("Plugin System", () => {
 
       // State machine should still work
       fluentState.from("start").to("end");
-      expect(fluentState.transition("end")).to.be.true;
+      const result = await fluentState.transition("end");
+      expect(result).to.be.true;
     });
 
     it("should continue executing plugins after error", () => {

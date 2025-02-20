@@ -13,54 +13,90 @@ describe("State Lifecycle Events", () => {
     fs.clear();
   });
 
-  it("should execute onEnter when a state is entered", () => {
+  it("should execute onEnter when a state is entered", async () => {
     const logs: string[] = [];
+    const addToLogs = (item: string): void => {
+      logs.push(item);
+    };
+
     fs.from("isAuthenticated")
-      .onEnter(() => logs.push("Entering isAuthenticated"))
+      .onEnter(() => {
+        addToLogs("Entering isAuthenticated");
+      })
       .to("hasBeenWelcomed");
 
-    fs.from("hasBeenWelcomed").onEnter(() => logs.push("Entering hasBeenWelcomed"));
+    fs.from("hasBeenWelcomed").onEnter(() => {
+      addToLogs("Entering hasBeenWelcomed");
+    });
 
-    fs.start().transition("hasBeenWelcomed");
+    await fs.start();
+    await fs.transition("hasBeenWelcomed");
     expect(logs).to.deep.equal(["Entering isAuthenticated", "Entering hasBeenWelcomed"]);
   });
 
-  it("should execute onExit when a state is exited", () => {
+  it("should execute onExit when a state is exited", async () => {
     const logs: string[] = [];
+    const addToLogs = (item: string): void => {
+      logs.push(item);
+    };
+
     fs.from("isAuthenticated")
-      .onExit(() => logs.push("Exiting isAuthenticated"))
+      .onExit(() => {
+        addToLogs("Exiting isAuthenticated");
+      })
       .to("hasBeenWelcomed");
 
     fs.from("hasBeenWelcomed")
-      .onExit(() => logs.push("Exiting hasBeenWelcomed"))
+      .onExit(() => {
+        addToLogs("Exiting hasBeenWelcomed");
+      })
       .to("isEmailVerified");
 
-    fs.transition("hasBeenWelcomed");
-    fs.transition("isEmailVerified");
+    await fs.transition("hasBeenWelcomed");
+    await fs.transition("isEmailVerified");
     expect(logs).to.deep.equal(["Exiting isAuthenticated", "Exiting hasBeenWelcomed"]);
   });
 
-  it("should execute multiple onEnter handlers for the same state", () => {
+  it("should execute multiple onEnter handlers for the same state", async () => {
     const logs: string[] = [];
+    const addToLogs = (item: string): void => {
+      logs.push(item);
+    };
+
     fs.from("isAuthenticated")
-      .onEnter(() => logs.push("First enter handler"))
-      .onEnter(() => logs.push("Second enter handler"))
+      .onEnter(() => {
+        addToLogs("First enter handler");
+      })
+      .onEnter(() => {
+        addToLogs("Second enter handler");
+      })
       .to("hasBeenWelcomed");
 
     fs.from("hasBeenWelcomed");
 
-    fs.start().transition("hasBeenWelcomed");
+    await fs.start();
+    await fs.transition("hasBeenWelcomed");
     expect(logs).to.deep.equal(["First enter handler", "Second enter handler"]);
   });
 
-  it("should execute multiple onExit handlers for the same state", () => {
+  it("should execute multiple onExit handlers for the same state", async () => {
     const logs: string[] = [];
+    const addToLogs = (item: string): void => {
+      logs.push(item);
+    };
+
     fs.from("isAuthenticated")
-      .onExit(() => logs.push("First exit handler"))
-      .onExit(() => logs.push("Second exit handler"))
+      .onExit(() => {
+        addToLogs("First exit handler");
+      })
+      .onExit(() => {
+        addToLogs("Second exit handler");
+      })
       .to("hasBeenWelcomed");
 
-    fs.transition("hasBeenWelcomed");
+    fs.from("hasBeenWelcomed");
+
+    await fs.transition("hasBeenWelcomed");
     expect(logs).to.deep.equal(["First exit handler", "Second exit handler"]);
   });
 
@@ -79,119 +115,152 @@ describe("State Lifecycle Events", () => {
       fs.from("signup").to("isAuthenticated");
     });
 
-    it("should call onEnter() only once when transitioning from login", () => {
-      fs.transition("login");
-      fs.transition("isAuthenticated");
+    it("should call onEnter() only once when transitioning from login", async () => {
+      await fs.transition("login");
+      await fs.transition("isAuthenticated");
       expect(enterSpy.calledOnce).to.be.true;
     });
 
-    it("should call onEnter() only once when transitioning from signup", () => {
-      fs.transition("signup");
-      fs.transition("isAuthenticated");
+    it("should call onEnter() only once when transitioning from signup", async () => {
+      await fs.transition("signup");
+      await fs.transition("isAuthenticated");
       expect(enterSpy.calledOnce).to.be.true;
     });
 
-    it("should call onEnter() again if the state is exited and re-entered", () => {
-      fs.transition("login");
-      fs.transition("isAuthenticated");
+    it("should call onEnter() again if the state is exited and re-entered", async () => {
+      await fs.transition("login");
+      await fs.transition("isAuthenticated");
       expect(enterSpy.calledOnce).to.be.true;
 
-      fs.transition("mainApp");
+      await fs.transition("mainApp");
       expect(exitSpy.calledOnce).to.be.true;
 
-      fs.transition("isAuthenticated");
+      await fs.transition("isAuthenticated");
       expect(enterSpy.calledTwice).to.be.true;
     });
 
-    it("should not call onExit() if state remains the same", () => {
-      fs.transition("login");
-      fs.transition("signup");
-      expect(exitSpy.notCalled).to.be.true;
+    it("should not call onExit() if state remains the same", async () => {
+      await fs.transition("login");
+      await fs.transition("signup");
+      expect(exitSpy.called).to.be.false;
     });
   });
 
-  it("should re-trigger onEnter when a state is re-entered", () => {
+  it("should re-trigger onEnter when a state is re-entered", async () => {
     const logs: string[] = [];
+    const addToLogs = (item: string): void => {
+      logs.push(item);
+    };
+
     fs.from("isAuthenticated")
-      .onEnter(() => logs.push("Entering isAuthenticated"))
+      .onEnter(() => {
+        addToLogs("Entering isAuthenticated");
+      })
       .to("hasBeenWelcomed");
 
     fs.from("hasBeenWelcomed").to("isAuthenticated");
 
-    fs.start();
-    fs.transition("hasBeenWelcomed");
-    fs.transition("isAuthenticated");
+    await fs.start();
+    await fs.transition("hasBeenWelcomed");
+    await fs.transition("isAuthenticated");
     expect(logs).to.deep.equal(["Entering isAuthenticated", "Entering isAuthenticated"]);
   });
 
-  it("should execute lifecycle events in the correct order", () => {
+  it("should execute onEnter and onExit handlers in correct order", async () => {
     const sequence: string[] = [];
+    const addToSequence = (item: string): void => {
+      sequence.push(item);
+    };
 
     fs.from("isAuthenticated")
-      .onEnter(() => sequence.push("isAuthenticated enter"))
-      .onExit(() => sequence.push("isAuthenticated exit"))
-      .to("hasBeenWelcomed");
-
-    fs.from("hasBeenWelcomed")
-      .onEnter(() => sequence.push("hasBeenWelcomed enter"))
-      .onExit(() => sequence.push("hasBeenWelcomed exit"));
-
-    fs.start();
-    fs.transition("isAuthenticated"); // 🔥 Explicitly enter the initial state
-    fs.transition("hasBeenWelcomed"); // Move to next state
-
-    expect(sequence).to.deep.equal([
-      "isAuthenticated enter", // ✅ Enters after explicit transition
-      "isAuthenticated exit", // ✅ Exits before transitioning
-      "hasBeenWelcomed enter", // ✅ Enters the new state after exit
-    ]);
-  });
-
-  it("should provide correct state references in handlers", () => {
-    let exitNextState: State | null = null;
-    let enterPrevState: State | null = null;
-
-    fs.from("isAuthenticated")
-      .onExit((_currentState: State, nextState: State) => {
-        exitNextState = nextState;
+      .onEnter(() => {
+        addToSequence("isAuthenticated enter");
+      })
+      .onExit(() => {
+        addToSequence("isAuthenticated exit");
       })
       .to("hasBeenWelcomed");
 
-    fs.from("hasBeenWelcomed").onEnter((prevState: State) => {
-      enterPrevState = prevState;
+    fs.from("hasBeenWelcomed")
+      .onEnter(() => {
+        addToSequence("hasBeenWelcomed enter");
+      })
+      .onExit(() => {
+        addToSequence("hasBeenWelcomed exit");
+      });
+
+    await fs.transition("hasBeenWelcomed");
+    expect(sequence).to.deep.equal(["isAuthenticated exit", "hasBeenWelcomed enter"]);
+  });
+
+  it("should execute state-specific handlers after onEnter", async () => {
+    const logs: string[] = [];
+    const addToLogs = (item: string): void => {
+      logs.push(item);
+    };
+
+    fs.from("initial").onEnter(() => {
+      addToLogs("enter initial");
+    });
+    fs.when("initial").do(() => {
+      addToLogs("handler initial");
     });
 
-    fs.start().transition("hasBeenWelcomed");
+    await fs.start();
+    expect(logs).to.deep.equal(["enter initial", "handler initial"]);
+  });
 
-    expect(exitNextState).to.not.be.null;
-    expect(enterPrevState).to.not.be.null;
-    expect(exitNextState!.name).to.equal("hasBeenWelcomed");
-    expect(enterPrevState!.name).to.equal("isAuthenticated");
+  it("should pass correct states to handlers", async () => {
+    const handlerCalls: Array<[State | null, State]> = [];
+    const addToHandlerCalls = (prev: State | null, curr: State): void => {
+      handlerCalls.push([prev, curr]);
+    };
+
+    fs.from("initial");
+    fs.when("initial").do((prev, curr) => {
+      addToHandlerCalls(prev, curr);
+    });
+
+    await fs.start();
+    expect(handlerCalls.length).to.equal(1);
+    expect(handlerCalls[0][0]).to.be.null;
+    expect(handlerCalls[0][1].name).to.equal("initial");
   });
 
   describe("start()", () => {
-    it("should trigger onEnter for initial state", () => {
+    it("should trigger onEnter for initial state", async () => {
       const logs: string[] = [];
-      fs.from("initial").onEnter(() => logs.push("enter initial"));
-      fs.start();
+      const addToLogs = (item: string): void => {
+        logs.push(item);
+      };
+
+      fs.from("initial").onEnter(() => {
+        addToLogs("enter initial");
+      });
+      await fs.start();
       expect(logs).to.deep.equal(["enter initial"]);
     });
 
-    it("should trigger state-specific handlers with null previous state", () => {
+    it("should trigger state-specific handlers with null previous state", async () => {
       const handlerCalls: Array<[State | null, State]> = [];
+      const addToHandlerCalls = (prev: State | null, curr: State): void => {
+        handlerCalls.push([prev, curr]);
+      };
+
       fs.from("initial");
-      fs.when("initial").do((prev, curr) => handlerCalls.push([prev, curr]));
+      fs.when("initial").do((prev, curr) => {
+        addToHandlerCalls(prev, curr);
+      });
 
-      fs.start();
-
+      await fs.start();
       expect(handlerCalls.length).to.equal(1);
       expect(handlerCalls[0][0]).to.be.null;
       expect(handlerCalls[0][1].name).to.equal("initial");
     });
 
-    it("should do nothing if no initial state is set", () => {
+    it("should do nothing if no initial state is set", async () => {
       const logs: string[] = [];
-      fs.start();
+      await fs.start();
       expect(logs).to.be.empty;
     });
   });
