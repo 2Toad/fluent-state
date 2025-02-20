@@ -56,11 +56,11 @@ export class FluentState {
    * This method should be called after all states have been defined and transitions have been configured.
    * It will trigger the `onEnter` and `AfterTransition` events for the initial state.
    */
-  start(): FluentState {
+  async start(): Promise<FluentState> {
     if (this.state) {
-      this.state._triggerEnter(null);
-      this.observer.trigger(Lifecycle.AfterTransition, null, this.state);
-      this.state.handlers.forEach((handler) => handler(null, this.state));
+      await this.state._triggerEnter(null);
+      await this.observer.trigger(Lifecycle.AfterTransition, null, this.state);
+      await Promise.all(this.state.handlers.map((handler) => handler(null, this.state)));
     }
     return this;
   }
@@ -76,9 +76,9 @@ export class FluentState {
    * BeforeTransition -> FailedTransition -> AfterTransition -> State-specific handlers
    *
    * @param names - The name(s) of the state(s) to transition to. If multiple are provided, one is chosen randomly.
-   * @returns true if the transition was successful, false otherwise.
+   * @returns A promise that resolves to true if the transition was successful, false otherwise.
    */
-  transition(...names: string[]): boolean {
+  async transition(...names: string[]): Promise<boolean> {
     if (!names.length) {
       throw new TransitionError(`No target state specified. Available states: ${Array.from(this.states.keys()).join(", ")}`);
     }
@@ -86,13 +86,13 @@ export class FluentState {
     const currentState = this.state;
     const nextStateName = names.length === 1 ? names[0] : names[Math.floor(Math.random() * names.length)];
 
-    if (!this._runMiddlewares(currentState, nextStateName)) {
+    if (!(await this._runMiddlewares(currentState, nextStateName))) {
       return false;
     }
     return this._executeTransition(currentState, nextStateName);
   }
 
-  next(...exclude: string[]): boolean {
+  async next(...exclude: string[]): Promise<boolean> {
     const name = this.state._getRandomTransition(exclude);
     return name ? this.transition(name) : false;
   }
@@ -163,7 +163,7 @@ export class FluentState {
     return this.states.get(name);
   }
 
-  private _runMiddlewares(currentState: State, nextStateName: string): boolean {
+  private async _runMiddlewares(currentState: State, nextStateName: string): Promise<boolean> {
     let index = 0;
     let shouldProceed = false;
 
@@ -182,10 +182,10 @@ export class FluentState {
     return true;
   }
 
-  private _executeTransition(currentState: State, nextStateName: string): boolean {
+  private async _executeTransition(currentState: State, nextStateName: string): Promise<boolean> {
     // BeforeTransition must occur first to allow for any pre-transition logic or validation,
     // and to provide an opportunity to cancel the transition if necessary.
-    const results = this.observer.trigger(Lifecycle.BeforeTransition, currentState, nextStateName);
+    const results = await this.observer.trigger(Lifecycle.BeforeTransition, currentState, nextStateName);
     if (results.includes(false)) {
       return false;
     }
@@ -193,27 +193,27 @@ export class FluentState {
     // FailedTransition must occur next to allow for any failed transition logic, including whether
     // the transition has been cancelled.
     if (!this.can(nextStateName)) {
-      this.observer.trigger(Lifecycle.FailedTransition, currentState, nextStateName);
+      await this.observer.trigger(Lifecycle.FailedTransition, currentState, nextStateName);
       return false;
     }
 
     const nextState = this._getState(nextStateName);
 
     // Trigger exit hook before state change
-    currentState._triggerExit(nextState);
+    await currentState._triggerExit(nextState);
 
     this.setState(nextStateName);
 
     // Trigger enter hook after state change but before AfterTransition
-    nextState._triggerEnter(currentState);
+    await nextState._triggerEnter(currentState);
 
     // AfterTransition is triggered after the state has changed but before any state-specific handlers.
     // This allows for any general post-transition logic.
-    this.observer.trigger(Lifecycle.AfterTransition, currentState, nextState);
+    await this.observer.trigger(Lifecycle.AfterTransition, currentState, nextState);
 
     // State-specific handlers are executed last. These are defined using `when().do()` and
     // are meant for actions that should occur specifically after entering this new state.
-    this.state.handlers.forEach((handler) => handler(currentState, nextState));
+    await Promise.all(this.state.handlers.map((handler) => handler(currentState, nextState)));
 
     return true;
   }
