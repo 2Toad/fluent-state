@@ -148,3 +148,39 @@ describe("Lifecycle Events", () => {
     });
   });
 });
+
+describe("Observer Pattern Edge Cases", () => {
+  it("should allow adding and removing observers dynamically", () => {
+    const fs = new FluentState();
+    let observerCalled = false;
+
+    const observer = () => {
+      observerCalled = true;
+    };
+
+    fs.observe(Lifecycle.AfterTransition, observer);
+    fs.from("start").to("end");
+
+    fs.transition("end");
+    expect(observerCalled).to.be.true;
+
+    observerCalled = false;
+    fs.observer.remove(Lifecycle.AfterTransition, observer);
+
+    fs.transition("start");
+    expect(observerCalled).to.be.false;
+  });
+
+  it("should execute observers in the correct order", () => {
+    const fs = new FluentState();
+    const callOrder: string[] = [];
+
+    fs.observe(Lifecycle.AfterTransition, () => callOrder.push("first"));
+    fs.observe(Lifecycle.AfterTransition, () => callOrder.push("second"));
+
+    fs.from("start").to("end");
+    fs.transition("end");
+
+    expect(callOrder).to.deep.equal(["first", "second"]);
+  });
+});

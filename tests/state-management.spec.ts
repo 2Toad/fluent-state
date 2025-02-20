@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { FluentState } from "../src";
+import { StateError } from "../src/types";
 
 describe("State Management", () => {
   let fs: FluentState;
@@ -115,7 +116,7 @@ describe("State Management", () => {
     });
 
     it("should throw error when setting unknown state", () => {
-      expect(() => fs.setState("unknown")).to.throw('SetState Error: Unknown state: "unknown"');
+      expect(() => fs.setState("unknown")).to.throw(StateError, 'Unknown state: "unknown"');
     });
   });
 });
