@@ -20,6 +20,12 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
   fluentState.use((fluentState) => {
     // Extend the fluentState instance
   });
+
+  // Supports async
+  fluentState.use(async (fluentState) => {
+    await initializePlugin();
+    // Extend the fluentState instance after async call
+  });
   ```
 
 - **Middleware Plugin**:
@@ -30,6 +36,15 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
       transition(); // Allow transition
     }
   });
+
+  // Supports async
+  fluentState.use(async (prev, next, transition) => {
+    // Perform async validation
+    const isValid = await validateTransition(prev, next);
+    if (isValid) {
+      transition(); // Allow transition
+    }
+  });
   ```
 
 - **Object Plugin**:
@@ -37,6 +52,15 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
   const plugin = {
     install(fluentState) {
       // Extend the fluentState instance
+    }
+  };
+  fluentState.use(plugin);
+
+  // Supports async
+  const plugin = {
+    async install(fluentState) {
+      await initializePlugin();
+      // Extend the fluentState instance after async call
     }
   };
   fluentState.use(plugin);
@@ -59,7 +83,17 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
       console.log("Access Denied!");
       return;
     }
-    proceed();
+  }));
+
+  // Async is supported
+  fluentState.use(createTransitionGuard(async (prev, next, proceed) => {
+    console.log(`Checking transition: ${prev?.name} → ${next}`);
+    const hasAccess = await checkUserPermissions();
+    const isValid = await validateTransition(prev, next);
+    
+    if (hasAccess && isValid) {
+      proceed();
+    }
   }));
   ```
   
