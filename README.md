@@ -225,8 +225,9 @@ fluentState
 
 ## Further Reading
 
-Fluent State is a non-hierarchial state machine. For more information on its architecture and how it operates, please refer to the [State Machine](./state-machine.md) documentation.
+- Fluent State is a non-hierarchial state machine. For more information on its architecture and how it operates, please refer to the [State Machine](./docs/state-machine.md) documentation.
+- Fluent State has a flexible plugin architecture. See the [Plugins](./docs/plugins.md) documentation for more details.
 
 ## Contributing 🤝
 
-So you want to contribute to the Fluent State project? Fantastic! Please read the [Contribute](./contribute.md) doc to get started.
+So you want to contribute to the Fluent State project? Fantastic! Please read the [Contribute](./docs/contribute.md) doc to get started.
