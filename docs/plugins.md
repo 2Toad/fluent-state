@@ -66,11 +66,12 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
   fluentState.use(plugin);
   ```
 
-## Native Plugins
+## Built-in Plugins
+
+Fluent State ships with the following plugins that provide common functionality. While these plugins are included in the package, you'll need to explicitly implement them using the `use()` method to add their functionality to your state machine.
 
 ### Transition Guard
 
-- **Name**: Transition Guard
 - **Purpose**: Allows intercepting and controlling state transitions by providing a middleware function.
 - **Usage**:
   - The plugin is created using the `createTransitionGuard` function, which takes a handler function as an argument.
