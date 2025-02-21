@@ -19,7 +19,7 @@ describe("Complex Scenarios", () => {
     fs.clear();
   });
 
-  it("should handle a complex state machine with multiple transitions and callbacks", () => {
+  it("should handle a complex state machine with multiple transitions and callbacks", async () => {
     // prettier-ignore
     fs.from("raw").to("chopped").or("sliced")
       .from("chopped").to("cooked").or("seasoned")
@@ -31,15 +31,21 @@ describe("Complex Scenarios", () => {
       .from("grilled").to("served");
 
     const stateHistory: string[] = [];
+    const addToHistory = (item: string): void => {
+      stateHistory.push(item);
+    };
+
     fs.observe(Lifecycle.AfterTransition, (_prevState: any, currentState: any) => {
-      stateHistory.push(currentState.name);
+      addToHistory(currentState.name);
     });
 
-    fs.when("served").do(() => stateHistory.push("meal complete"));
+    fs.when("served").do(() => {
+      addToHistory("meal complete");
+    });
 
-    fs.transition("sliced");
-    fs.transition("fried");
-    fs.transition("served");
+    await fs.transition("sliced");
+    await fs.transition("fried");
+    await fs.transition("served");
 
     expect(stateHistory).to.deep.equal(["sliced", "fried", "served", "meal complete"]);
   });

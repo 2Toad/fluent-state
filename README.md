@@ -30,9 +30,10 @@ fluentState
 fluentState
   .when('diced').do(() => console.log('diced'));
 
-fluentState.transition('diced');
+// Perform transition
+await fluentState.transition('diced');
 // or
-fluentState.next();
+await fluentState.next();
 ```
 
 ## API
@@ -102,30 +103,30 @@ Removes all states
 fluentState.clear();
 ```
 
-#### transition(...names: string[]): boolean
+#### transition(...names: string[]): Promise<boolean>
 - Transitions to another state.
 - If multiple states are specified, a state is chosen at random.
 - Returns `true` upon success.
 
 ```JavaScript
 // Transition to the 'diced' state
-fluentState.transition('diced');
+await fluentState.transition('diced');
 
 // Transition to the 'diced' or 'discarded' state (selected at random)
-fluentState.transition('diced', 'discarded');
+await fluentState.transition('diced', 'discarded');
 ```
 
-#### next(...exclude: string[]): boolean
+#### next(...exclude: string[]): Promise<boolean>
 - If the current state contains a single transition, that state is transitioned to.
 - If the current state contains multiple transitions, a transition is selected at random.
   - With the option to exclude specified states from the random selection.
 - Returns `true` upon success.
 
 ```JavaScript
-fluentState.next();
+await fluentState.next();
 
 // A random state, excluding 'pickled' and 'discarded'
-fluentState.next('pickled', 'discarded');
+await fluentState.next('pickled', 'discarded');
 ```
 
 ### Callbacks
@@ -138,8 +139,7 @@ Specifies the state you want to add a callback to
 fluentState.when('diced');
 ```
 
-#### do(handler: (previousState: State, fluentState: FluentState) => any): Handler
-Adds a callback
+#### do(handler: (previousState: State, fluentState: FluentState) => void | Promise<void>): Handler
 
 ```JavaScript
 fluentState
@@ -147,22 +147,32 @@ fluentState
   .do((previousState, fluentState) => {
     console.log(`Transitioned from "${previousState.name}"`);
   });
+
+// Asynchronous callbacks are supported
+fluentState
+  .when('diced')
+  .do(async (previousState, fluentState) => {
+    await saveStateChange(previousState.name);
+    console.log(`Transitioned from "${previousState.name}"`);
+  });
 ```
 
-#### and(handler: (previousState: State, fluentState: FluentState) => any): Handler
+#### and(handler: (previousState: State, fluentState: FluentState) => void | Promise<void>): Handler
 Adds another callback
 
 ```JavaScript
 fluentState
   .when('diced')
-  .do(() => console.log('Transitioned to "diced"'))
-  .and((previousState, fluentState) => {
-    console.log(`Transitioned from "${previousState.name}"`);
+  .do(() => console.log('First callback'))
+  .and(() => console.log('Second callback'))
+  .and(async () => {
+    await someAsyncOperation(); // async is supported
+    console.log('Third callback');
   });
 ```
 
 #### onEnter/onExit Hooks
-You can add enter/exit hooks directly to states
+You can add enter/exit hooks directly to states.
 
 ```JavaScript
 fluentState
@@ -177,16 +187,10 @@ Multiple hooks are supported:
 fluentState
   .from('vegetable')
   .onEnter(() => console.log('First enter hook'))
-  .onEnter(() => console.log('Second enter hook'))
+  .onEnter(async (previousState, currentState) => {
+    await logStateChange(previousState, currentState); // async is supported
+  })
   .to('diced');
-```
-
-> And of course it's all chainable
-
-```JavaScript
-fluentState
-  .when('diced').do(() => console.log('Transitioned to "diced"'))
-  .when('pickled').do(() => console.log('Transitioned to "pickled"'));
 ```
 
 ### Lifecycle
@@ -198,10 +202,20 @@ fluentState.observe(Lifecycle.BeforeTransition, (currentState, newState) => {
   return false;
 });
 
-// Chainable
+// Async handlers are supported
+fluentState.observe(Lifecycle.BeforeTransition, async (currentState, newState) => {
+  // You can prevent the transition by returning false after async operations
+  const isValid = await validateTransition(currentState, newState);
+  return isValid;
+});
+
+// Chainable with mix of sync and async
 fluentState
   .observe(Lifecycle.FailedTransition, () => console.log('Transition failed'))
-  .observe(Lifecycle.FailedTransition, () => console.log('Multiple hooks allowed on each event'))
+  .observe(Lifecycle.FailedTransition, async () => {
+    await logFailure(); // async is supported
+    console.log('Multiple hooks allowed on each event');
+  })
   .observe(Lifecycle.AfterTransition, () => console.log('Transition complete'));
 ```
 
@@ -211,16 +225,16 @@ fluentState
 
 - **BeforeTransition**
   ```ts
-  (currentState: State, nextState: string): boolean
+  (currentState: State, nextState: string) => boolean | Promise<boolean>
   ```
 - **FailedTransition**
   ```ts
-  (currentState: State, targetState: string): void
+  (currentState: State, targetState: string) => void | Promise<void>
   ```
 
 - **AfterTransition**
   ```ts
-  (previousState: State, currentState: State): void
+  (previousState: State, currentState: State) => void | Promise<void>
   ```
 
 ## Further Reading

@@ -13,9 +13,9 @@ describe("Error Handling", () => {
     fs.clear();
   });
 
-  it("should return false when transitioning to an unknown state", () => {
+  it("should return false when transitioning to an unknown state", async () => {
     fs.from("vegetable").to("diced");
-    const result = fs.transition("unknown");
+    const result = await fs.transition("unknown");
     expect(result).to.be.false;
     expect(fs.state.name).to.equal("vegetable");
   });
@@ -40,8 +40,14 @@ describe("Error Handling", () => {
     expect(fs.state.name).to.equal("diced");
   });
 
-  it("should throw an error when transitioning without a target state", () => {
+  it("should throw an error when transitioning without a target state", async () => {
     fs.from("vegetable").to("diced");
-    expect(() => fs.transition()).to.throw(TransitionError, "No target state specified");
+    try {
+      await fs.transition();
+      expect.fail("Should have thrown an error");
+    } catch (error) {
+      expect(error).to.be.instanceOf(TransitionError);
+      expect(error.message).to.include("No target state specified");
+    }
   });
 });

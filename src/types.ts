@@ -1,16 +1,16 @@
 import { State } from "./state";
 import { FluentState } from "./fluent-state";
 
-export type BeforeTransitionHandler = (currentState: State, nextState: string) => boolean;
-export type FailedTransitionHandler = (currentState: State, targetState: string) => void;
-export type AfterTransitionHandler = (previousState: State, currentState: State) => void;
+export type BeforeTransitionHandler = (currentState: State, nextState: string) => boolean | Promise<boolean>;
+export type FailedTransitionHandler = (currentState: State, targetState: string) => void | Promise<void> | undefined;
+export type AfterTransitionHandler = (previousState: State, currentState: State) => void | Promise<void> | undefined;
 
 export type LifeCycleHandler = BeforeTransitionHandler | FailedTransitionHandler | AfterTransitionHandler;
 
-export type EventHandler = (previousState: State, currentState: State) => void;
+export type EventHandler = (previousState: State, currentState: State) => void | Promise<void> | undefined;
 
-export type EnterEventHandler = (previousState: State, currentState: State) => void;
-export type ExitEventHandler = (currentState: State, nextState: State) => void;
+export type EnterEventHandler = (previousState: State, currentState: State) => void | Promise<void> | undefined;
+export type ExitEventHandler = (currentState: State, nextState: State) => void | Promise<void> | undefined;
 
 /**
  * A plugin can be either:

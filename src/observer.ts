@@ -12,14 +12,15 @@ export class Observer {
     this.observers.set(event, handlers);
   }
 
-  trigger(event: Lifecycle, prevState: State, currentState: State | string): boolean[] {
+  async trigger(event: Lifecycle, prevState: State, currentState: State | string): Promise<boolean[]> {
     const handlers = this.getEvent(event);
     if (!handlers) {
       return [];
     }
 
     const executor = LifecycleHandlerFactory.createExecutor(event);
-    return handlers.map((handler) => executor.execute(handler, prevState, currentState));
+    const results = await Promise.all(handlers.map((handler) => executor.execute(handler, prevState, currentState)));
+    return results;
   }
 
   remove(event: Lifecycle, handler: LifeCycleHandler): void {

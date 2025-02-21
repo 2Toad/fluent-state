@@ -20,6 +20,12 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
   fluentState.use((fluentState) => {
     // Extend the fluentState instance
   });
+
+  // Supports async
+  fluentState.use(async (fluentState) => {
+    await initializePlugin();
+    // Extend the fluentState instance after async call
+  });
   ```
 
 - **Middleware Plugin**:
@@ -27,6 +33,15 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
   fluentState.use((prev, next, transition) => {
     // Intercept transition
     if (someCondition) {
+      transition(); // Allow transition
+    }
+  });
+
+  // Supports async
+  fluentState.use(async (prev, next, transition) => {
+    // Perform async validation
+    const isValid = await validateTransition(prev, next);
+    if (isValid) {
       transition(); // Allow transition
     }
   });
@@ -40,13 +55,23 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
     }
   };
   fluentState.use(plugin);
+
+  // Supports async
+  const plugin = {
+    async install(fluentState) {
+      await initializePlugin();
+      // Extend the fluentState instance after async call
+    }
+  };
+  fluentState.use(plugin);
   ```
 
-## Native Plugins
+## Built-in Plugins
+
+Fluent State ships with the following plugins that provide common functionality. While these plugins are included in the package, you'll need to explicitly implement them using the `use()` method to add their functionality to your state machine.
 
 ### Transition Guard
 
-- **Name**: Transition Guard
 - **Purpose**: Allows intercepting and controlling state transitions by providing a middleware function.
 - **Usage**:
   - The plugin is created using the `createTransitionGuard` function, which takes a handler function as an argument.
@@ -59,7 +84,17 @@ Plugins are installed using the `use` method of the `FluentState` class. The `us
       console.log("Access Denied!");
       return;
     }
-    proceed();
+  }));
+
+  // Async is supported
+  fluentState.use(createTransitionGuard(async (prev, next, proceed) => {
+    console.log(`Checking transition: ${prev?.name} → ${next}`);
+    const hasAccess = await checkUserPermissions();
+    const isValid = await validateTransition(prev, next);
+    
+    if (hasAccess && isValid) {
+      proceed();
+    }
   }));
   ```
   

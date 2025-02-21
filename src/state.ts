@@ -41,12 +41,12 @@ export class State {
     return this.transitions.indexOf(name) >= 0;
   }
 
-  _triggerEnter(previousState: State): void {
-    this.enterEventHandlers.forEach((handler) => handler(previousState, this));
+  async _triggerEnter(previousState: State): Promise<void> {
+    await Promise.all(this.enterEventHandlers.map((handler) => handler(previousState, this)));
   }
 
-  _triggerExit(nextState: State): void {
-    this.exitEventHandlers.forEach((handler) => handler(this, nextState));
+  async _triggerExit(nextState: State): Promise<void> {
+    await Promise.all(this.exitEventHandlers.map((handler) => handler(this, nextState)));
   }
 
   _addHandler(handler: EventHandler): void {

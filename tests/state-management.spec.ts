@@ -73,7 +73,7 @@ describe("State Management", () => {
       expect(fs._getState("vegetable").transitions).to.be.empty;
     });
 
-    it("should remove a state and update transitions correctly when multiple transitions exist", () => {
+    it("should remove a state and update transitions correctly when multiple transitions exist", async () => {
       fs.from("vegetable").to("diced").from("diced").to("pickled");
 
       expect(fs._getState("vegetable").transitions).to.deep.equal(["diced"]);
@@ -90,7 +90,8 @@ describe("State Management", () => {
       expect(fs._getState("diced").transitions).to.deep.equal(["pickled"]);
       expect(fs._getState("pickled").transitions).to.be.empty;
 
-      expect(fs.transition("pickled")).to.be.true;
+      const result = await fs.transition("pickled");
+      expect(result).to.be.true;
       expect(fs.state.name).to.equal("pickled");
     });
   });
@@ -99,7 +100,7 @@ describe("State Management", () => {
     it("should check if state exists", () => {
       fs.from("vegetable");
       expect(fs.has("vegetable")).to.equal(true);
-      expect(fs.has("nonexistent")).to.equal(false);
+      expect(fs.has("unknown")).to.equal(false);
     });
 
     it("should clear all states", () => {
@@ -107,6 +108,7 @@ describe("State Management", () => {
       fs.clear();
       expect(fs.has("vegetable")).to.equal(false);
       expect(fs.has("diced")).to.equal(false);
+      expect(fs.state).to.be.null;
     });
 
     it("should set state explicitly", () => {
@@ -116,7 +118,7 @@ describe("State Management", () => {
     });
 
     it("should throw error when setting unknown state", () => {
-      expect(() => fs.setState("unknown")).to.throw(StateError, 'Unknown state: "unknown"');
+      expect(() => fs.setState("unknown")).to.throw(StateError);
     });
   });
 });

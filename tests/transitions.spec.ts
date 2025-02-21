@@ -47,92 +47,105 @@ describe("Transitions", () => {
   });
 
   describe("state transitions", () => {
-    it("should transition to the next state", () => {
+    it("should transition to the next state", async () => {
       fs.from("vegetable").to("diced");
 
-      expect(fs.next()).to.equal(true);
+      const result = await fs.next();
+      expect(result).to.equal(true);
       expect(fs.state.name).to.equal("diced");
     });
 
-    it("should transition to the next random state", () => {
+    it("should transition to the next random state", async () => {
       fs.from("vegetable").to("diced").or("pickled").or("discarded");
 
-      expect(fs.next()).to.equal(true);
+      const result = await fs.next();
+      expect(result).to.equal(true);
       expect(["diced", "pickled", "discarded"].includes(fs.state.name)).to.equal(true);
     });
 
-    it("should transition to a specified state", () => {
+    it("should transition to a specified state", async () => {
       fs.from("vegetable").to("diced");
 
-      expect(fs.transition("diced")).to.equal(true);
+      const result = await fs.transition("diced");
+      expect(result).to.equal(true);
       expect(fs.state.name).to.equal("diced");
     });
 
-    it("should transition to the next random state (excluding)", () => {
+    it("should transition to the next random state (excluding)", async () => {
       fs.from("vegetable").to("diced").or("pickled").or("eaten").or("discarded");
 
-      expect(fs.next("diced", "pickled")).to.equal(true);
+      const result = await fs.next("diced", "pickled");
+      expect(result).to.equal(true);
       expect(["eaten", "discarded"].includes(fs.state.name)).to.equal(true);
     });
 
-    it("should not transition to the next random state when all states have been excluded", () => {
+    it("should not transition to the next random state when all states have been excluded", async () => {
       // Disable state machine logging during this test
       console.warn = function () {};
       fs.from("vegetable").to("diced").or("pickled");
 
-      expect(fs.next("diced", "pickled")).to.equal(false);
+      const result = await fs.next("diced", "pickled");
+      expect(result).to.equal(false);
       expect(fs.state.name).to.equal("vegetable");
     });
 
-    it("should transition to a random specified state", () => {
+    it("should transition to a random specified state", async () => {
       fs.from("vegetable").to("diced").or("pickled").or("discarded");
 
-      expect(fs.transition("diced", "discarded")).to.equal(true);
+      const result = await fs.transition("diced", "discarded");
+      expect(result).to.equal(true);
       expect(["diced", "discarded"].includes(fs.state.name)).to.equal(true);
     });
 
-    it("should transition through multiple states", () => {
+    it("should transition through multiple states", async () => {
       fs.from("vegetable").to("diced").from("diced").to("salad");
 
-      expect(fs.transition("diced")).to.equal(true);
-      expect(fs.transition("salad")).to.equal(true);
+      const result1 = await fs.transition("diced");
+      expect(result1).to.equal(true);
+      const result2 = await fs.transition("salad");
+      expect(result2).to.equal(true);
       expect(fs.state.name).to.equal("salad");
     });
 
-    it("should not transition to an invalid state", () => {
+    it("should not transition to an invalid state", async () => {
       fs.from("vegetable").to("diced");
 
-      expect(fs.transition("foo")).to.equal(false);
+      const result = await fs.transition("foo");
+      expect(result).to.equal(false);
     });
 
-    it("should not transition to an invalid state and remain in the current state", () => {
+    it("should not transition to an invalid state and remain in the current state", async () => {
       fs.from("vegetable").to("diced");
 
-      expect(fs.transition("chopped")).to.equal(false);
+      const result = await fs.transition("chopped");
+      expect(result).to.equal(false);
       expect(fs.state.name).to.equal("vegetable");
     });
 
-    it("transition should change state", () => {
+    it("transition should change state", async () => {
       fs.from("vegetable").to("diced");
-      fs.transition("diced");
+      await fs.transition("diced");
       expect(fs.state.name).to.equal("diced");
     });
   });
 
   describe("Edge Cases for State Transitions", () => {
-    it("should handle transitions with no available states", () => {
+    it("should handle transitions with no available states", async () => {
       const fs = new FluentState();
-      expect(fs.transition("nonexistent")).to.be.false;
+      const result = await fs.transition("nonexistent");
+      expect(result).to.be.false;
     });
 
-    it("should handle circular state transitions", () => {
+    it("should handle circular state transitions", async () => {
       const fs = new FluentState();
       fs.from("A").to("B").from("B").to("A");
 
-      expect(fs.transition("B")).to.be.true;
+      const result1 = await fs.transition("B");
+      expect(result1).to.be.true;
       expect(fs.state.name).to.equal("B");
 
-      expect(fs.transition("A")).to.be.true;
+      const result2 = await fs.transition("A");
+      expect(result2).to.be.true;
       expect(fs.state.name).to.equal("A");
     });
   });

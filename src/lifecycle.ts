@@ -3,25 +3,25 @@ import { State } from "./state";
 import { BeforeTransitionHandler, FailedTransitionHandler, AfterTransitionHandler, LifeCycleHandler } from "./types";
 
 interface LifecycleHandlerExecutor {
-  execute(handler: LifeCycleHandler, prevState: State, currentState: State | string): boolean;
+  execute(handler: LifeCycleHandler, prevState: State, currentState: State | string): Promise<boolean>;
 }
 
 class BeforeTransitionExecutor implements LifecycleHandlerExecutor {
-  execute(handler: BeforeTransitionHandler, prevState: State, currentState: string): boolean {
-    return handler(prevState, currentState);
+  async execute(handler: BeforeTransitionHandler, prevState: State, currentState: string): Promise<boolean> {
+    return await handler(prevState, currentState);
   }
 }
 
 class FailedTransitionExecutor implements LifecycleHandlerExecutor {
-  execute(handler: FailedTransitionHandler, prevState: State, currentState: string): boolean {
-    handler(prevState, currentState);
+  async execute(handler: FailedTransitionHandler, prevState: State, currentState: string): Promise<boolean> {
+    await handler(prevState, currentState);
     return true;
   }
 }
 
 class AfterTransitionExecutor implements LifecycleHandlerExecutor {
-  execute(handler: AfterTransitionHandler, prevState: State, currentState: State): boolean {
-    handler(prevState, currentState);
+  async execute(handler: AfterTransitionHandler, prevState: State, currentState: State): Promise<boolean> {
+    await handler(prevState, currentState);
     return true;
   }
 }
