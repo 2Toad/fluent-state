@@ -42,6 +42,7 @@ describe("Transition Guard", () => {
   });
 
   it("should handle errors in middleware gracefully", async () => {
+    console.log("ℹ️  The following error is expected as part of the error handling test:");
     const middleware = createTransitionGuard(() => {
       throw new Error("Middleware error");
     });
@@ -103,7 +104,7 @@ describe("Middleware Edge Cases", () => {
       addToOrder("middleware start");
 
       // Simulate async operation
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       addToOrder("async operation complete");
 
       proceed();
