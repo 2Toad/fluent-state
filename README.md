@@ -53,24 +53,43 @@ Adds a state
 fluentState.from('vegetable');
 ```
 
-#### to(name: string): Transition
-Adds a transition to a state
+#### to(name: string, autoTransition?: (state: State) => boolean | Promise<boolean>): Transition
+Adds a transition to a state. Optionally accepts an auto-transition condition that, when true, will automatically trigger the transition.
 
 ```JavaScript
 fluentState
   .from('vegetable') // Add the 'vegetable' state
   .to('diced');      // add the 'diced' state, with a transtion from 'vegetable'
+
+// With auto-transition
+fluentState
+  .from('vegetable')
+  .to('trash',       
+    (state) => state.quality < 0 // automatically transition to 'trash' when quality is below 0
+  );
+
+// Async auto-transitions are supported
+fluentState
+  .from('order')
+  .to('shipped',
+    async (state) => {
+      const status = await checkShipmentStatus(state.orderId);
+      return status === 'shipped';
+    }
+  );
 ```
 
-#### or(name: string): Transition
-Adds a transition to a state
+#### or(name: string, autoTransition?: (state: State) => boolean | Promise<boolean>): Transition
+Adds an alternate transition to a state. Optionally accepts an auto-transition condition that, when true, will automatically trigger the transition.
 
 ```JavaScript
 fluentState
   .from('vegetable') // Add the 'vegetable' state
-  .to('diced')       // add the 'diced' state, with a transtion from 'vegetable'
-  .or('pickled')     // add the 'pickled' state, with a transtion from 'vegetable'
-  .or('discarded');  // add the 'discarded' state, with a transtion from 'vegetable'
+  .to('diced')       // add the 'diced' state, with a transition from 'vegetable'
+  .or('pickled')     // add the 'pickled' state, with a transition from 'vegetable'
+  .or('discarded',   // add the 'discarded' state with auto-transition when expired
+    (state) => state.expiryDate < Date.now()
+  );
 ```
 
 #### setState(name: string): void
