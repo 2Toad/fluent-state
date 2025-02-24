@@ -66,3 +66,29 @@ export interface AutoTransitionConfig<TContext = unknown> {
  * @template TContext - The type of context object used in the condition function.
  */
 export type AutoTransition<TContext = unknown> = (state: State, context: TContext) => boolean | Promise<boolean>;
+
+/**
+ * Represents a single transition entry in the history.
+ */
+export interface TransitionHistoryEntry {
+  /** The source state name */
+  from: string;
+  /** The target state name */
+  to: string;
+  /** Timestamp when the transition occurred */
+  timestamp: number;
+  /** Context data at the time of transition */
+  context: unknown;
+  /** Whether the transition was successful */
+  success: boolean;
+}
+
+/**
+ * Configuration options for the transition history.
+ */
+export interface TransitionHistoryOptions {
+  /** Maximum number of entries to keep in history (default: 100) */
+  maxSize?: number;
+  /** Whether to include context data in history entries (default: true) */
+  includeContext?: boolean;
+}

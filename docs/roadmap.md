@@ -114,6 +114,61 @@ Benefits:
 - Time travel debugging capabilities
 - Analytics and monitoring
 
+User Story:
+As a developer working with complex state machines in FluentState,
+I want to track and query the history of state transitions,
+So that I can debug issues, audit state changes, implement time travel debugging, and gather analytics about my application's state flow.
+
+Acceptance Criteria:
+
+1. Transition Recording
+   - All state transitions are recorded with their source state, target state, timestamp, context data, and success status
+   - Transitions are stored in chronological order
+   - Failed transition attempts are also recorded with appropriate success status
+   - The history can be configured to have a maximum size limit to prevent memory issues
+   - When the size limit is reached, oldest entries are removed first
+
+2. History Querying
+   - Developers can retrieve the most recent transition with getLastTransition()
+   - Developers can query transitions related to a specific state with getTransitionsForState()
+   - Query results maintain the chronological order of transitions
+   - The API provides a way to clear the history when needed
+
+3. Integration with State Machine
+   - Transition history recording is optional and can be enabled/disabled
+   - History recording has minimal performance impact on the state machine
+   - The history is accessible through the state machine instance
+   - History is properly maintained even during complex transition scenarios (e.g., auto-transitions, conditional transitions)
+
+4. Serialization Support
+   - Transition history can be serialized to JSON for storage or transmission
+   - Sensitive context data can be filtered during serialization
+   - Serialized history can be imported back into a TransitionHistory instance
+
+Example Usage:
+```typescript
+// Enable history tracking
+const machine = new StateMachine({
+  initialState: "idle",
+  enableHistory: true,
+  historyOptions: {
+    maxSize: 100,
+    includeContext: true
+  }
+});
+
+// Later, query the history
+const lastTransition = machine.history.getLastTransition();
+console.log(`Last transition: ${lastTransition.from} -> ${lastTransition.to}`);
+
+// Get all transitions involving the "processing" state
+const processingTransitions = machine.history.getTransitionsForState("processing");
+console.log(`Processing state was involved in ${processingTransitions.length} transitions`);
+
+// Export history for debugging
+const serializedHistory = JSON.stringify(machine.history);
+```
+
 ## 3. Batch Context Updates
 Dependencies: 
 - Enhanced Auto-transition Configuration (for proper handling of debounced transitions during batch updates)

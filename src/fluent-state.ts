@@ -5,6 +5,20 @@ import { Lifecycle } from "./enums";
 import { LifeCycleHandler } from "./types";
 import { FluentStatePlugin } from "./types";
 import { TransitionError, StateError } from "./types";
+import { TransitionHistory } from "./transition-history";
+import { TransitionHistoryOptions } from "./types";
+
+/**
+ * Configuration options for the FluentState instance.
+ */
+export interface FluentStateOptions {
+  /** Initial state name */
+  initialState?: string;
+  /** Whether to enable transition history tracking */
+  enableHistory?: boolean;
+  /** Configuration options for the transition history */
+  historyOptions?: TransitionHistoryOptions;
+}
 
 /**
  * The main class for building and managing a state machine.
@@ -20,8 +34,43 @@ export class FluentState {
   /** The observer for handling lifecycle events */
   readonly observer: Observer = new Observer();
 
+  /** The history of state transitions */
+  history?: TransitionHistory;
+
+  /** Whether transition history tracking is enabled */
+  private historyEnabled: boolean;
+
   /** Middleware functions that intercept transitions */
   private middlewares: ((prev: State | null, next: string, transition: () => void) => void | Promise<void>)[] = [];
+
+  /**
+   * Creates a new FluentState instance.
+   *
+   * @param options - Configuration options for the state machine
+   */
+  constructor(options: FluentStateOptions = {}) {
+    this.historyEnabled = options.enableHistory ?? false;
+
+    if (this.historyEnabled) {
+      this.history = new TransitionHistory(options.historyOptions);
+    }
+
+    if (options.initialState) {
+      this.state = this._addState(options.initialState);
+    }
+  }
+
+  /**
+   * Enables transition history tracking.
+   *
+   * @param options - Configuration options for the transition history
+   * @returns The FluentState instance for chaining
+   */
+  enableHistory(options?: TransitionHistoryOptions): FluentState {
+    this.historyEnabled = true;
+    this.history = new TransitionHistory(options);
+    return this;
+  }
 
   /**
    * Extends the state machine with a plugin.
@@ -88,6 +137,11 @@ export class FluentState {
       if (this.state.handlers.length > 0) {
         await Promise.all(this.state.handlers.map((handler) => handler(null, this.state)));
       }
+
+      // Record the initial state as a transition from null
+      if (this.historyEnabled && this.history) {
+        this.history.recordTransition(null, this.state.name, this.state.getContext(), true);
+      }
     }
     return this;
   }
@@ -110,13 +164,24 @@ export class FluentState {
     const nextStateName = names.length === 1 ? names[0] : names[Math.floor(Math.random() * names.length)];
 
     if (!(await this._runMiddlewares(currentState, nextStateName))) {
+      // Record failed transition due to middleware blocking
+      if (this.historyEnabled && this.history) {
+        this.history.recordTransition(currentState, nextStateName, currentState.getContext(), false);
+      }
       return false;
     }
+
     const nextState = this._getState(nextStateName);
     if (!nextState) {
       await this.observer.trigger(Lifecycle.FailedTransition, currentState, nextStateName);
+
+      // Record failed transition due to missing state
+      if (this.historyEnabled && this.history) {
+        this.history.recordTransition(currentState, nextStateName, currentState.getContext(), false);
+      }
       return false;
     }
+
     return this._executeTransition(currentState, nextState);
   }
 
@@ -290,10 +355,17 @@ export class FluentState {
    * @returns True if the transition was successful, false otherwise.
    */
   private async _executeTransition(currentState: State, nextState: State): Promise<boolean> {
+    // Get the context before transition for history recording
+    const contextBeforeTransition = currentState.getContext();
+
     // BeforeTransition must occur first to allow for any pre-transition logic or validation,
     // and to provide an opportunity to cancel the transition if necessary.
     const results = await this.observer.trigger(Lifecycle.BeforeTransition, currentState, nextState.name);
     if (results.includes(false)) {
+      // Record failed transition due to BeforeTransition hook returning false
+      if (this.historyEnabled && this.history) {
+        this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, false);
+      }
       return false;
     }
 
@@ -301,6 +373,11 @@ export class FluentState {
     // the transition has been cancelled.
     if (!currentState.can(nextState.name)) {
       await this.observer.trigger(Lifecycle.FailedTransition, currentState, nextState.name);
+
+      // Record failed transition due to invalid transition
+      if (this.historyEnabled && this.history) {
+        this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, false);
+      }
       return false;
     }
 
@@ -320,6 +397,11 @@ export class FluentState {
     // are meant for actions that should occur specifically after entering this new state.
     if (nextState.handlers.length > 0) {
       await Promise.all(nextState.handlers.map((handler) => handler(currentState, nextState)));
+    }
+
+    // Record successful transition
+    if (this.historyEnabled && this.history) {
+      this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, true);
     }
 
     return true;
