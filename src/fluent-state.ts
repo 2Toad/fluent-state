@@ -151,6 +151,11 @@ export class FluentState {
     const stateToRemove = this._getState(name);
     if (!stateToRemove) return;
 
+    // Clean up any resources in the state before removing
+    if (typeof stateToRemove["clearAllDebounceTimers"] === "function") {
+      stateToRemove["clearAllDebounceTimers"]();
+    }
+
     this.states.delete(name);
 
     // Remove all transitions to this state from other states
@@ -169,6 +174,14 @@ export class FluentState {
    * Clears all states from the state machine.
    */
   clear(): void {
+    // Clean up any resources in states before clearing
+    this.states.forEach((state) => {
+      // Call internal method to clear debounce timers if it exists
+      if (typeof state["clearAllDebounceTimers"] === "function") {
+        state["clearAllDebounceTimers"]();
+      }
+    });
+
     this.states.clear();
     this.state = null;
   }
@@ -234,8 +247,16 @@ export class FluentState {
    * @param name - The name of the state to get.
    * @returns The State object if found, null otherwise.
    */
-  _getState(name: string): State {
-    return this.states.get(name);
+  _getState(name: string): State | null {
+    return this.states.get(name) || null;
+  }
+
+  /**
+   * Gets the current state of the state machine.
+   * @returns The current state, or null if the state machine hasn't been started
+   */
+  getCurrentState(): State | null {
+    return this.state || null;
   }
 
   /**

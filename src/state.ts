@@ -39,6 +39,9 @@ export class State {
   /** Flag to track if we're currently evaluating transitions */
   private isEvaluating = false;
 
+  /** Map of debounce timers for transitions with debounce values */
+  private debounceTimers: Map<number, NodeJS.Timeout> = new Map();
+
   constructor(name: string, fluentState: FluentState) {
     this.fluentState = fluentState;
     this.name = name;
@@ -71,6 +74,7 @@ export class State {
           condition: config.condition,
           targetState: name,
           priority: config.priority,
+          debounce: config.debounce,
         });
       }
     }
@@ -103,8 +107,13 @@ export class State {
   updateContext<T>(update: Partial<T>): void {
     const currentState = this.stateManager.getState() as T;
     this.stateManager.setState({ ...currentState, ...update });
-    // Evaluate transitions after context update
-    this.evaluateAutoTransitions(this.stateManager.getState());
+
+    // Check if we're still the current state in the state machine
+    // This prevents evaluation if the state has already been exited
+    if (this.fluentState.getCurrentState()?.name === this.name) {
+      // Evaluate transitions after context update
+      this.evaluateAutoTransitions(this.stateManager.getState());
+    }
   }
 
   /**
@@ -133,7 +142,13 @@ export class State {
    * Triggers all exit handlers in parallel when leaving this state.
    */
   async _triggerExit(nextState: State): Promise<void> {
-    await Promise.all(this.exitEventHandlers.map((handler) => handler(this, nextState)));
+    // Clear any debounce timers when exiting the state
+    this.clearAllDebounceTimers();
+
+    // Call all exit handlers
+    for (const handler of this.exitEventHandlers) {
+      await handler(this, nextState);
+    }
   }
 
   /**
@@ -237,17 +252,52 @@ export class State {
       return false;
     }
 
+    // Clear any active debounce timers for immediate evaluation
+    this.clearAllDebounceTimers();
+
+    // Group transitions by whether they have debounce or not
+    const nonDebouncedTransitions: AutoTransitionConfig[] = [];
+    const debouncedTransitions: AutoTransitionConfig[] = [];
+
+    // Sort transitions by priority (highest first)
+    const sortedTransitions = [...this.autoTransitions].sort((a, b) => {
+      const priorityA = a.priority ?? 0;
+      const priorityB = b.priority ?? 0;
+      return priorityB - priorityA;
+    });
+
+    // Separate debounced and non-debounced transitions
+    for (const transition of sortedTransitions) {
+      if (transition.debounce && transition.debounce > 0) {
+        debouncedTransitions.push(transition);
+      } else {
+        nonDebouncedTransitions.push(transition);
+      }
+    }
+
+    // Process non-debounced transitions immediately
+    const immediateResult = await this.processTransitions(nonDebouncedTransitions, context);
+    if (immediateResult) {
+      return true; // A transition happened, don't process debounced ones
+    }
+
+    // Schedule debounced transitions
+    this.scheduleDebouncedTransitions(debouncedTransitions, context);
+
+    return false;
+  }
+
+  /**
+   * Process a list of transitions in order
+   * @param transitions Transitions to process
+   * @param context Context to evaluate transitions with
+   * @returns Whether a transition was successful
+   */
+  private async processTransitions<TContext>(transitions: AutoTransitionConfig[], context: TContext): Promise<boolean> {
     this.isEvaluating = true;
     try {
-      // Sort transitions by priority (highest first)
-      const sortedTransitions = [...this.autoTransitions].sort((a, b) => {
-        const priorityA = a.priority ?? 0;
-        const priorityB = b.priority ?? 0;
-        return priorityB - priorityA;
-      });
-
       // Evaluate transitions in priority order
-      for (const transition of sortedTransitions) {
+      for (const transition of transitions) {
         try {
           const shouldTransition = await transition.condition(this, context);
           if (shouldTransition) {
@@ -265,5 +315,56 @@ export class State {
     } finally {
       this.isEvaluating = false;
     }
+  }
+
+  /**
+   * Schedule debounced transitions for later evaluation
+   * @param transitions Transitions to schedule
+   * @param context Context to evaluate transitions with
+   */
+  private scheduleDebouncedTransitions<TContext>(transitions: AutoTransitionConfig[], context: TContext): void {
+    // For each debounced transition, clear existing timer and create a new one
+    for (let i = 0; i < transitions.length; i++) {
+      // eslint-disable-next-line security/detect-object-injection -- index is safely generated and transitions array is internal
+      const transition = transitions[i];
+      const debounceTime = transition.debounce ?? 0;
+
+      // Create a unique index for this transition
+      const transitionIndex = this.autoTransitions.indexOf(transition);
+
+      // Clear existing timer if any
+      if (this.debounceTimers.has(transitionIndex)) {
+        clearTimeout(this.debounceTimers.get(transitionIndex));
+      }
+
+      // Create new timer
+      const timer = setTimeout(async () => {
+        // Remove this timer from the map
+        this.debounceTimers.delete(transitionIndex);
+
+        // Only evaluate if we're still in this state
+        if (this.fluentState.getCurrentState()?.name === this.name) {
+          const shouldTransition = await transition.condition(this, context);
+          if (shouldTransition) {
+            await this.fluentState.transition(transition.targetState).catch((error) => {
+              console.error("Debounced auto-transition failed:", error);
+            });
+          }
+        }
+      }, debounceTime);
+
+      // Store the timer
+      this.debounceTimers.set(transitionIndex, timer);
+    }
+  }
+
+  /**
+   * Clear all debounce timers
+   */
+  private clearAllDebounceTimers(): void {
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
   }
 }

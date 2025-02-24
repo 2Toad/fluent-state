@@ -74,6 +74,7 @@ interface AutoTransitionConfig<TContext = unknown> {
   condition: (state: State, context: TContext) => boolean | Promise<boolean>;
   targetState: string;
   priority?: number;  // Higher numbers = higher priority
+  debounce?: number;  // Delay in milliseconds before transition occurs
 }
 ```
 
@@ -133,7 +134,192 @@ fs.from("monitoring")
   .or<AppState>("inactive", (_, ctx) => !ctx.isActive);
 ```
 
-### Best Practices for Priority-based Transitions
+#### Best Practices for Priority-based Transitions
+
+1. **Priority Scale**
+   - Use a consistent scale (e.g., 0-5) across your application
+   - Reserve higher priorities for critical state changes
+   - Document your priority levels in comments
+
+2. **Logical Grouping**
+   ```typescript
+   // Critical system states (Priority 3)
+   .to("error", { condition: errorCheck, priority: 3 })
+   .or("systemFailure", { condition: failureCheck, priority: 3 })
+   
+   // Warning states (Priority 2)
+   .or("diskWarning", { condition: diskCheck, priority: 2 })
+   .or("memoryWarning", { condition: memoryCheck, priority: 2 })
+   
+   // Normal operations (Priority 1)
+   .or("active", { condition: activeCheck, priority: 1 })
+   .or("standby", { condition: standbyCheck, priority: 1 })
+   ```
+
+3. **Condition Complexity**
+   - Keep high-priority conditions simple and fast
+   - Place complex or time-consuming conditions at lower priorities
+   ```typescript
+   .to("error", {
+     condition: () => isSystemCritical(), // Simple, fast check
+     priority: 3
+   })
+   .or("warning", {
+     condition: async () => await complexAnalysis(), // Complex check
+     priority: 1
+   })
+   ```
+
+4. **Testing Considerations**
+   - Test priority ordering explicitly
+   - Verify that higher priority transitions block lower ones
+   - Test equal-priority transition ordering
+   ```typescript
+   it("should evaluate high priority before low", async () => {
+     const fs = new FluentState();
+     fs.from("start")
+       .to("high", { condition: () => true, priority: 2 })
+       .or("low", { condition: () => true, priority: 1 });
+     
+     await fs.start();
+     expect(fs.state.name).to.equal("high");
+   });
+   ```
+
+### Debounced Transitions
+
+You can delay transitions by specifying a debounce period in milliseconds. This is useful for:
+
+1. **Reducing state thrashing**: When your context data changes rapidly or frequently
+2. **Waiting for stabilization**: When you want to ensure a condition persists before transitioning
+3. **Batching updates**: When multiple context changes should result in a single transition
+
+```typescript
+interface UserActivity {
+  idle: boolean;
+  lastAction: number;
+}
+
+fs.from("active")
+  .to<UserActivity>("idle", {
+    condition: (_, ctx) => ctx.idle && Date.now() - ctx.lastAction > 5000,
+    targetState: "idle",
+    debounce: 2000  // Wait 2 seconds after condition is true before transitioning
+  });
+```
+
+#### Key Features of Debounced Transitions
+
+1. **Delayed Execution**: The transition only occurs after the specified debounce period has elapsed.
+2. **Timer Reset**: If the context is updated during the debounce period, the timer is reset.
+3. **Condition Re-evaluation**: When the debounce period completes, the condition is re-evaluated before transitioning.
+4. **Cleanup on Exit**: Timers are automatically cleaned up when exiting a state to prevent memory leaks.
+5. **Priority Respect**: Transition priorities are still respected for debounced transitions.
+
+#### Examples
+
+**Basic Debounced Transition:**
+```typescript
+fs.from("editing")
+  .to<DocumentState>("saved", {
+    condition: (_, ctx) => ctx.hasChanges && ctx.autoSave,
+    targetState: "saved",
+    debounce: 1000  // Wait 1 second after changes before auto-saving
+  });
+```
+
+**Combining Debounced and Immediate Transitions:**
+```typescript
+// Immediate error transition (no debounce)
+fs.from("processing")
+  .to<JobState>("error", {
+    condition: (_, ctx) => !!ctx.error,
+    targetState: "error",
+    priority: 2  // Higher priority, checked first
+  })
+  // Debounced completion transition
+  .or<JobState>("complete", {
+    condition: (_, ctx) => ctx.progress >= 100,
+    targetState: "complete",
+    debounce: 500,  // Wait 500ms to ensure the job is really complete
+    priority: 1
+  });
+```
+
+**Context Updates During Debounce:**
+```typescript
+// This transition will reset its timer whenever status changes
+fs.from("connecting")
+  .to<NetworkState>("connected", {
+    condition: (_, ctx) => ctx.status === "connected",
+    targetState: "connected",
+    debounce: 1000  // Ensure connection is stable for 1 second
+  });
+
+// Usage:
+networkState.updateContext({ status: "connecting" });
+// ... 500ms later
+networkState.updateContext({ status: "connected" }); // Timer starts
+// ... 300ms later
+networkState.updateContext({ status: "connecting" }); // Timer is reset
+// ... 800ms later
+networkState.updateContext({ status: "connected" }); // Timer starts again
+// ... 1000ms later with no updates
+// State transitions to "connected"
+```
+
+#### Best Practices for Debounced Transitions
+
+1. **Choose Appropriate Delays**
+   - Use shorter delays (100-500ms) for UI responsiveness
+   - Use longer delays (1000ms+) for stabilizing system states
+   - Consider user experience when choosing delay values
+
+2. **Combine with Priorities**
+   ```typescript
+   // Critical errors should not be debounced
+   .to("error", {
+     condition: errorCondition,
+     priority: 2
+   })
+   // Status updates can be debounced
+   .or("warning", {
+     condition: warningCondition,
+     debounce: 500,
+     priority: 1
+   })
+   ```
+
+3. **Testing Considerations**
+   - Use mocked timers in tests (e.g., Sinon, Jest fake timers)
+   - Test timer reset behavior
+   - Verify condition re-evaluation
+   - Ensure cleanup on state exit
+   ```typescript
+   it("should delay transition with debounce", async () => {
+     // Setup state machine with debounced transition
+     fs.from("idle").to("active", {
+       condition: () => true,
+       debounce: 200
+     });
+     
+     await fs.start();
+     
+     // Trigger evaluation
+     fs.state.evaluateAutoTransitions({});
+     
+     // Should still be in idle state
+     expect(fs.state.name).to.equal("idle");
+     
+     // Advance time
+     await clock.tickAsync(200);
+     
+     // Now should have transitioned
+     expect(fs.state.name).to.equal("active");
+   });
+   ```
+
+### Best Practices for Auto-transition Configuration
 
 1. **Priority Scale**
    - Use a consistent scale (e.g., 0-5) across your application

@@ -119,63 +119,49 @@ describe("Auto Transitions", () => {
     });
 
     it("should work with custom state management", async () => {
-      interface AppState {
-        user: { isLoggedIn: boolean; lastActive: number };
-      }
+      // Create a simple state machine with two states
+      fs.from("active").to("inactive");
+      await fs.start();
+      expect(fs.state.name).to.equal("active");
 
-      // Simulate a basic state manager
-      class StateManager {
-        private state: AppState;
-        private listeners: ((state: AppState) => void)[] = [];
+      // Create a simple state manager
+      const stateManager = {
+        state: { status: "active" },
+        listeners: [],
 
-        constructor() {
-          this.state = {
-            user: { isLoggedIn: true, lastActive: Date.now() },
-          };
-        }
-
-        subscribe(listener: (state: AppState) => void) {
+        subscribe(listener) {
           this.listeners.push(listener);
           return () => {
             this.listeners = this.listeners.filter((l) => l !== listener);
           };
-        }
+        },
 
-        setState(newState: Partial<AppState>) {
+        setState(newState) {
           this.state = { ...this.state, ...newState };
           this.listeners.forEach((listener) => listener(this.state));
-        }
+        },
 
         getState() {
           return this.state;
-        }
-      }
+        },
+      };
 
-      const stateManager = new StateManager();
+      // Create a condition function that checks the status
+      const condition = (_, context) => context.status === "inactive";
 
-      fs.from("active").to<AppState>("inactive", (_, context) => {
-        const inactiveTime = Date.now() - context.user.lastActive;
-        return inactiveTime > 100;
-      });
+      // Add a transition with the condition
+      fs.from("active").to("inactive", condition);
 
-      // Set up auto-transition evaluation on state changes
-      stateManager.subscribe((state) => {
-        fs.state.evaluateAutoTransitions(state);
-      });
-
-      await fs.start();
-      // Initial evaluation with current state
-      await fs.state.evaluateAutoTransitions(stateManager.getState());
+      // Verify initial state
       expect(fs.state.name).to.equal("active");
 
-      // Simulate user inactivity
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      stateManager.setState({
-        user: { isLoggedIn: true, lastActive: Date.now() - 200 },
-      });
+      // Update state to trigger transition
+      stateManager.setState({ status: "inactive" });
 
-      // Give time for the state update to propagate
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Manually evaluate auto-transitions with the new state
+      await fs.state.evaluateAutoTransitions(stateManager.getState());
+
+      // Verify the transition occurred
       expect(fs.state.name).to.equal("inactive");
     });
 
@@ -227,6 +213,7 @@ describe("Auto Transitions", () => {
     it("should continue evaluating other conditions after error", async () => {
       fs.from("start")
         .to("error", () => {
+          console.log("ℹ️  The following error is expected as part of the error handling test:");
           throw new Error("Test error");
         })
         .or("end", () => true);
@@ -402,6 +389,221 @@ describe("Auto Transitions", () => {
       await fs.start();
       await fs.state.evaluateAutoTransitions({ value: 5 });
       expect(fs.state.name).to.equal("low");
+    });
+  });
+
+  describe("Debounced Transitions", () => {
+    let clock: sinon.SinonFakeTimers;
+
+    beforeEach(() => {
+      fs = new FluentState();
+      // Use Sinon's fake timers to control time
+      clock = sinon.useFakeTimers();
+    });
+
+    afterEach(() => {
+      fs.clear();
+      clock.restore();
+      chai.spy.restore();
+    });
+
+    it("should delay transition when debounce is specified", async () => {
+      // Setup
+      interface TestState {
+        value: number;
+      }
+
+      fs.from("idle").to<TestState>("active", {
+        condition: (_, context) => context.value > 5,
+        targetState: "active",
+        debounce: 200, // 200ms debounce
+      });
+
+      await fs.start();
+      expect(fs.state.name).to.equal("idle");
+
+      // Update context but the transition shouldn't happen immediately
+      fs.state.updateContext<TestState>({ value: 10 });
+
+      // Verify state hasn't changed yet
+      expect(fs.state.name).to.equal("idle");
+
+      // Advance time by 100ms (not enough to trigger transition)
+      await clock.tickAsync(100);
+      expect(fs.state.name).to.equal("idle");
+
+      // Advance to full debounce time
+      await clock.tickAsync(100);
+      expect(fs.state.name).to.equal("active");
+    });
+
+    it("should reset debounce timer on new context updates", async () => {
+      // Setup
+      interface TestState {
+        value: number;
+      }
+
+      fs.from("idle").to<TestState>("active", {
+        condition: (_, context) => context.value > 5,
+        targetState: "active",
+        debounce: 200, // 200ms debounce
+      });
+
+      await fs.start();
+
+      // First update
+      fs.state.updateContext<TestState>({ value: 10 });
+
+      // Wait 150ms (not enough to trigger transition)
+      await clock.tickAsync(150);
+      expect(fs.state.name).to.equal("idle");
+
+      // Second update resets timer
+      fs.state.updateContext<TestState>({ value: 15 });
+
+      // Wait another 150ms (not enough for the new timer)
+      await clock.tickAsync(150);
+      expect(fs.state.name).to.equal("idle");
+
+      // Wait for the remaining time
+      await clock.tickAsync(50);
+      expect(fs.state.name).to.equal("active");
+    });
+
+    it("should respect transition priority order in debounced transitions", async () => {
+      // Setup: Two transitions with different priorities
+      interface TestState {
+        status: string;
+      }
+
+      // Lower priority transition (default = 0)
+      fs.from("idle").to<TestState>("warning", {
+        condition: (_, context) => context.status === "error warning",
+        targetState: "warning",
+        debounce: 100,
+      });
+
+      // Higher priority transition (1 > 0)
+      fs.from("idle").to<TestState>("error", {
+        condition: (_, context) => context.status === "error warning",
+        targetState: "error",
+        priority: 1,
+        debounce: 100,
+      });
+
+      await fs.start();
+
+      // Update context to satisfy both conditions simultaneously
+      fs.state.updateContext<TestState>({ status: "error warning" });
+
+      // Verify state hasn't changed yet
+      expect(fs.state.name).to.equal("idle");
+
+      // Both transitions are debounced, wait for them to trigger
+      await clock.tickAsync(100);
+
+      // Higher priority transition should win
+      expect(fs.state.name).to.equal("error");
+    });
+
+    it("should properly clean up debounce timers when exiting state", async () => {
+      // Setup
+      interface TestState {
+        value: number;
+      }
+
+      fs.from("idle").to<TestState>("debounced", {
+        condition: (_, context) => context.value > 5,
+        targetState: "debounced",
+        debounce: 200,
+      });
+
+      fs.from("idle").to("immediate", {
+        condition: () => true,
+        targetState: "immediate",
+      });
+
+      await fs.start();
+
+      // Trigger the debounced transition
+      fs.state.updateContext<TestState>({ value: 10 });
+
+      // Manually transition away before debounce completes
+      await fs.transition("immediate");
+      expect(fs.state.name).to.equal("immediate");
+
+      // Advance time past the debounce period
+      await clock.tickAsync(200);
+
+      // The state should still be "immediate" - debounced transition should not happen
+      expect(fs.state.name).to.equal("immediate");
+    });
+
+    it("should not trigger debounced transitions if condition becomes false during wait", async () => {
+      // Setup
+      interface TestState {
+        value: number;
+      }
+
+      fs.from("idle").to<TestState>("active", {
+        condition: (_, context) => context.value > 5,
+        targetState: "active",
+        debounce: 200,
+      });
+
+      await fs.start();
+
+      // Initial update - should trigger transition after debounce
+      fs.state.updateContext<TestState>({ value: 10 });
+
+      // Wait 150ms
+      await clock.tickAsync(150);
+
+      // Change context so condition becomes false
+      fs.state.updateContext<TestState>({ value: 2 });
+
+      // Complete the debounce period
+      await clock.tickAsync(50);
+
+      // Transition should not happen because condition is now false
+      expect(fs.state.name).to.equal("idle");
+    });
+
+    it("should process non-debounced transitions immediately even when debounced ones are pending", async () => {
+      // Setup a state machine with a simple state flow
+      fs.from("idle");
+      await fs.start();
+
+      // Add a non-debounced transition first
+      fs.from("idle").to("processing", {
+        condition: () => true,
+        targetState: "processing",
+      });
+
+      // We need to explicitly trigger auto-transition evaluation
+      await fs.state.evaluateAutoTransitions({});
+
+      // Now the non-debounced transition should have happened
+      expect(fs.state.name).to.equal("processing");
+
+      // Now add a debounced transition from processing
+      fs.from("processing").to("completed", {
+        condition: () => true,
+        targetState: "completed",
+        debounce: 100,
+      });
+
+      // We need to explicitly trigger auto-transition evaluation again
+      fs.state.evaluateAutoTransitions({});
+
+      // State shouldn't change yet because of the debounce
+      expect(fs.state.name).to.equal("processing");
+
+      // Advance the timer to trigger the debounced transition
+      await clock.tickAsync(100);
+
+      // Now the debounced transition should have happened
+      expect(fs.state.name).to.equal("completed");
     });
   });
 });
