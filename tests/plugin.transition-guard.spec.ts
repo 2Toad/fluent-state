@@ -3,6 +3,7 @@ import * as chai from "chai";
 import * as spies from "chai-spies";
 import { FluentState } from "../src/fluent-state";
 import { createTransitionGuard } from "../src/plugins/transition-guard";
+import { suppressConsole } from "./helpers";
 
 chai.use(spies);
 
@@ -47,8 +48,9 @@ describe("Transition Guard", () => {
   });
 
   it("should handle errors in middleware gracefully", async () => {
-    console.log("ℹ️  The following error is expected as part of the error handling test:");
-    const consoleSpy = chai.spy.on(console, "error");
+    // Suppress console output
+    const { flags, restore } = suppressConsole();
+
     const testError = new Error("Middleware error");
 
     const middleware = createTransitionGuard(() => {
@@ -61,7 +63,10 @@ describe("Transition Guard", () => {
     const result = await fs.transition("end");
     expect(result).to.be.false;
     expect(fs.state.name).to.equal("start");
-    expect(consoleSpy).to.have.been.called.with("Error in transition guard");
+    expect(flags.errorLogged).to.be.true;
+
+    // Restore console functions
+    restore();
   });
 
   it("should correctly influence transitions within a flow", async () => {

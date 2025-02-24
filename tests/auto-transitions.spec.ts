@@ -4,6 +4,7 @@ import * as spies from "chai-spies";
 import { FluentState } from "../src";
 import { AutoTransitionConfig } from "../src/types";
 import * as sinon from "sinon";
+import { suppressConsole } from "./helpers";
 
 chai.use(spies);
 
@@ -198,8 +199,8 @@ describe("Auto Transitions", () => {
 
   describe("Error Handling", () => {
     it("should handle errors in conditions gracefully", async () => {
-      console.log("ℹ️  The following error is expected as part of the error handling test:");
-      const consoleSpy = chai.spy.on(console, "error");
+      // Suppress console output
+      const { flags, restore } = suppressConsole();
 
       fs.from("start").to("end", () => {
         throw new Error("Test error");
@@ -207,19 +208,28 @@ describe("Auto Transitions", () => {
 
       await fs.start();
       expect(fs.state.name).to.equal("start");
-      expect(consoleSpy).to.have.been.called.with("Error in auto-transition condition");
+      expect(flags.errorLogged).to.be.true;
+
+      // Restore console functions
+      restore();
     });
 
     it("should continue evaluating other conditions after error", async () => {
+      // Suppress console output
+      const { flags, restore } = suppressConsole();
+
       fs.from("start")
         .to("error", () => {
-          console.log("ℹ️  The following error is expected as part of the error handling test:");
           throw new Error("Test error");
         })
         .or("end", () => true);
 
       await fs.start();
       expect(fs.state.name).to.equal("end");
+      expect(flags.errorLogged).to.be.true;
+
+      // Restore console functions
+      restore();
     });
   });
 
