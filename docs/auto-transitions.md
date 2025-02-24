@@ -75,6 +75,10 @@ interface AutoTransitionConfig<TContext = unknown> {
   targetState: string;
   priority?: number;  // Higher numbers = higher priority
   debounce?: number;  // Delay in milliseconds before transition occurs
+  retryConfig?: {     // Retry failed transitions
+    maxAttempts: number;
+    delay: number;
+  };
 }
 ```
 
@@ -183,6 +187,157 @@ fs.from("monitoring")
      
      await fs.start();
      expect(fs.state.name).to.equal("high");
+   });
+   ```
+
+### Retry Transitions
+
+You can configure auto-transitions to automatically retry when their condition functions throw errors. This is particularly useful for:
+
+1. **Handling transient failures**: When conditions depend on network requests or other operations that might temporarily fail
+2. **Improving resilience**: Making your state machine more robust against intermittent issues
+3. **Simplifying error handling**: Avoiding complex try/catch blocks in your condition functions
+
+```typescript
+fs.from("connecting")
+  .to<NetworkState>("connected", {
+    condition: async (_, state) => {
+      const response = await checkConnection(state.endpoint);
+      return response.isConnected;
+    },
+    targetState: "connected",
+    retryConfig: {
+      maxAttempts: 3,     // Try up to 3 times
+      delay: 1000         // Wait 1 second between attempts
+    }
+  });
+```
+
+#### Key Features of Retry Configuration
+
+1. **Automatic Retries**: When a condition function throws an error, it will be retried automatically up to `maxAttempts` times.
+2. **Delay Between Attempts**: Each retry attempt waits for the specified `delay` in milliseconds before executing.
+3. **Early Exit on False**: If the condition returns `false` (as opposed to throwing an error), retries stop immediately.
+4. **Detailed Logging**: Retry attempts and failures are logged for debugging purposes.
+5. **Final Error Reporting**: If all retry attempts fail, a final error is logged with details.
+
+#### Examples
+
+**Basic Retry Configuration:**
+```typescript
+fs.from("loading")
+  .to<DataState>("ready", {
+    condition: async (_, ctx) => {
+      const data = await fetchData(ctx.dataUrl);
+      return data.status === "complete";
+    },
+    targetState: "ready",
+    retryConfig: {
+      maxAttempts: 3,
+      delay: 2000  // 2 seconds between attempts
+    }
+  });
+```
+
+**Combining Retry with Priority:**
+```typescript
+fs.from("initializing")
+  // Critical connection - retry quickly but fewer times
+  .to<SystemState>("connected", {
+    condition: async (_, ctx) => await establishPrimaryConnection(ctx),
+    targetState: "connected",
+    priority: 3,
+    retryConfig: {
+      maxAttempts: 2,
+      delay: 500  // Fast retry for critical connection
+    }
+  })
+  // Fallback connection - retry more times with longer delays
+  .or<SystemState>("fallbackConnected", {
+    condition: async (_, ctx) => await establishFallbackConnection(ctx),
+    targetState: "fallbackConnected",
+    priority: 2,
+    retryConfig: {
+      maxAttempts: 5,
+      delay: 2000  // Longer delay for fallback
+    }
+  });
+```
+
+**Handling Different Error Types:**
+```typescript
+fs.from("authenticating")
+  .to<AuthState>("authenticated", {
+    condition: async (_, ctx) => {
+      try {
+        const authResult = await authenticate(ctx.credentials);
+        return authResult.success;
+      } catch (error) {
+        // For certain errors, we don't want to retry
+        if (error.code === "INVALID_CREDENTIALS") {
+          return false; // This will stop retries
+        }
+        // For other errors (network, server, etc.), throw to trigger retry
+        throw error;
+      }
+    },
+    targetState: "authenticated",
+    retryConfig: {
+      maxAttempts: 3,
+      delay: 1000
+    }
+  });
+```
+
+#### Best Practices for Retry Configuration
+
+1. **Choose Appropriate Retry Counts**
+   - Use fewer retries (1-3) for user-facing operations to avoid long waits
+   - Use more retries (3-5) for background operations or critical system functions
+   - Consider the likelihood of transient failures when setting retry counts
+
+2. **Set Reasonable Delays**
+   - For quick operations, use shorter delays (100-500ms)
+   - For network operations, use longer delays (1000-5000ms)
+   - Consider implementing exponential backoff for more advanced scenarios
+
+3. **Combine with Other Features**
+   ```typescript
+   fs.from("processing")
+     .to<JobState>("complete", {
+       condition: async (_, ctx) => await checkJobStatus(ctx.jobId),
+       targetState: "complete",
+       priority: 2,
+       retryConfig: {
+         maxAttempts: 3,
+         delay: 1000
+       },
+       debounce: 500  // Wait for stability before checking
+     });
+   ```
+
+4. **Testing Considerations**
+   - Test both successful retries and exhausted retries
+   - Verify that false returns stop retries immediately
+   - Test interactions with priority and debounce settings
+   ```typescript
+   it("should retry and eventually succeed", async () => {
+     // Setup state machine with retry config
+     let attempts = 0;
+     fs.from("initial").to("success", {
+       condition: () => {
+         attempts++;
+         if (attempts < 3) throw new Error("Temporary failure");
+         return true;
+       },
+       retryConfig: { maxAttempts: 3, delay: 10 }
+     });
+     
+     await fs.start();
+     await fs.state.evaluateAutoTransitions({});
+     
+     expect(attempts).to.equal(3);
+     expect(fs.state.name).to.equal("success");
    });
    ```
 

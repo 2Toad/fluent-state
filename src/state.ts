@@ -75,6 +75,7 @@ export class State {
           targetState: name,
           priority: config.priority,
           debounce: config.debounce,
+          retryConfig: config.retryConfig,
         });
       }
     }
@@ -288,10 +289,10 @@ export class State {
   }
 
   /**
-   * Process a list of transitions in order
+   * Process a list of transitions in priority order
    * @param transitions Transitions to process
    * @param context Context to evaluate transitions with
-   * @returns Whether a transition was successful
+   * @returns Whether any transition was successful
    */
   private async processTransitions<TContext>(transitions: AutoTransitionConfig[], context: TContext): Promise<boolean> {
     this.isEvaluating = true;
@@ -299,12 +300,53 @@ export class State {
       // Evaluate transitions in priority order
       for (const transition of transitions) {
         try {
-          const shouldTransition = await transition.condition(this, context);
-          if (shouldTransition) {
-            await this.fluentState.transition(transition.targetState).catch((error) => {
-              console.error("Auto-transition failed:", error);
-            });
-            return true;
+          // Handle retry logic if configured
+          if (transition.retryConfig && transition.retryConfig.maxAttempts > 0) {
+            let attempts = 0;
+            let lastError: unknown = null;
+
+            while (attempts < transition.retryConfig.maxAttempts) {
+              try {
+                const shouldTransition = await transition.condition(this, context);
+
+                // If condition returns false (vs throwing an error), stop retrying immediately
+                if (!shouldTransition) {
+                  break;
+                }
+
+                // Condition succeeded, attempt the transition
+                await this.fluentState.transition(transition.targetState);
+                return true;
+              } catch (error) {
+                lastError = error;
+                attempts++;
+
+                // Log retry attempt for debugging
+                console.log(`Auto-transition retry attempt ${attempts}/${transition.retryConfig.maxAttempts} failed:`, error);
+
+                // If we've reached max attempts, break out of retry loop
+                if (attempts >= transition.retryConfig.maxAttempts) {
+                  break;
+                }
+
+                // Wait for the specified delay before retrying
+                await new Promise((resolve) => setTimeout(resolve, transition.retryConfig.delay));
+              }
+            }
+
+            // If we've exhausted all retries and still failed, log the error
+            if (lastError) {
+              console.error("Auto-transition failed after all retry attempts:", lastError);
+            }
+          } else {
+            // Standard non-retry behavior
+            const shouldTransition = await transition.condition(this, context);
+            if (shouldTransition) {
+              await this.fluentState.transition(transition.targetState).catch((error) => {
+                console.error("Auto-transition failed:", error);
+              });
+              return true;
+            }
           }
         } catch (error) {
           console.error("Error in auto-transition condition", error);

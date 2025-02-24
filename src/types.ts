@@ -53,6 +53,11 @@ export interface AutoTransitionConfig<TContext = unknown> {
   targetState: string;
   priority?: number; // Higher values are evaluated first, defaults to 0
   debounce?: number; // Delay evaluation by specified milliseconds
+  retryConfig?: {
+    // Retry failed transitions
+    maxAttempts: number;
+    delay: number;
+  };
 }
 
 /**
