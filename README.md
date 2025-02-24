@@ -77,6 +77,20 @@ fluentState
     (state, context) => context.quality < 0 && context.expired === true
   );
 
+// Enhanced configuration with priorities
+fluentState
+  .from('vegetable')
+  .to<AppState>('critical', {
+    condition: (_, ctx) => ctx.quality < -10,
+    targetState: 'critical',
+    priority: 2  // Higher priority, evaluated first
+  })
+  .or<AppState>('trash', {
+    condition: (_, ctx) => ctx.quality < 0,
+    targetState: 'trash',
+    priority: 1  // Lower priority
+  });
+
 // Evaluate transitions when your state changes
 const myState = { quality: -1, expired: true };
 await fluentState.state.evaluateAutoTransitions(myState);

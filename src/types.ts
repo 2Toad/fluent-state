@@ -49,8 +49,9 @@ export type FluentStatePlugin =
  * @template TContext - The type of context object used in the condition function.
  */
 export interface AutoTransitionConfig<TContext = unknown> {
-  condition: (state: State, context: TContext) => boolean | Promise<boolean>;
+  condition: AutoTransition<TContext>;
   targetState: string;
+  priority?: number; // Higher values are evaluated first, defaults to 0
 }
 
 /**
@@ -58,4 +59,4 @@ export interface AutoTransitionConfig<TContext = unknown> {
  *
  * @template TContext - The type of context object used in the condition function.
  */
-export type AutoTransition<TContext> = (state: State, context: TContext) => boolean | Promise<boolean>;
+export type AutoTransition<TContext = unknown> = (state: State, context: TContext) => boolean | Promise<boolean>;

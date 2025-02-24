@@ -2,6 +2,8 @@ import { expect } from "chai";
 import * as chai from "chai";
 import * as spies from "chai-spies";
 import { FluentState } from "../src";
+import { AutoTransitionConfig } from "../src/types";
+import * as sinon from "sinon";
 
 chai.use(spies);
 
@@ -254,6 +256,152 @@ describe("Auto Transitions", () => {
       await fs.start();
       await fs.transition("middle");
       expect(fs.state.name).to.equal("end");
+    });
+  });
+
+  describe("Priority-based Transitions", () => {
+    it("should evaluate transitions in order of priority (highest to lowest)", async () => {
+      interface TestState {
+        value: number;
+      }
+
+      const fs = new FluentState();
+      fs.from("start")
+        .to<TestState>("low", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "low",
+          priority: 1,
+        } as AutoTransitionConfig<TestState>)
+        .from("start")
+        .to<TestState>("high", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "high",
+          priority: 2,
+        } as AutoTransitionConfig<TestState>);
+
+      await fs.start();
+      await fs.state.evaluateAutoTransitions({ value: 1 });
+      expect(fs.state.name).to.equal("high");
+    });
+
+    it("should maintain definition order for equal priorities", async () => {
+      interface TestState {
+        value: number;
+      }
+
+      const fs = new FluentState();
+      fs.from("start")
+        .to<TestState>("second", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "second",
+          priority: 1,
+        } as AutoTransitionConfig<TestState>)
+        .from("start")
+        .to<TestState>("first", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "first",
+          priority: 2,
+        } as AutoTransitionConfig<TestState>)
+        .from("start")
+        .to<TestState>("third", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "third",
+          priority: 1,
+        } as AutoTransitionConfig<TestState>);
+
+      await fs.start();
+      await fs.state.evaluateAutoTransitions({ value: 1 });
+      expect(fs.state.name).to.equal("first");
+    });
+
+    it("should default to priority 0 when not specified", async () => {
+      interface TestState {
+        value: number;
+      }
+
+      const fs = new FluentState();
+      fs.from("start")
+        .to<TestState>("explicit-zero", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "explicit-zero",
+          priority: 0,
+        } as AutoTransitionConfig<TestState>)
+        .from("start")
+        .to<TestState>("implicit-zero", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "implicit-zero",
+        } as AutoTransitionConfig<TestState>)
+        .from("start")
+        .to<TestState>("high", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "high",
+          priority: 1,
+        } as AutoTransitionConfig<TestState>);
+
+      await fs.start();
+      await fs.state.evaluateAutoTransitions({ value: 1 });
+      expect(fs.state.name).to.equal("high");
+    });
+
+    it("should only execute the first successful transition", async () => {
+      interface TestState {
+        value: number;
+      }
+
+      const fs = new FluentState();
+      const spy = sinon.spy();
+
+      // Create a state machine with two transitions from "start"
+      // Both transitions have conditions that would succeed, but only the higher priority one should be evaluated
+      fs.from("start").to<TestState>("first", {
+        condition: (_, ctx) => {
+          spy();
+          return ctx?.value > 0; // Only return true when context has value property
+        },
+        targetState: "first",
+        priority: 2,
+      } as AutoTransitionConfig<TestState>);
+
+      fs.from("start").to<TestState>("second", {
+        condition: (_, ctx) => {
+          spy();
+          return ctx?.value > 0; // Only return true when context has value property
+        },
+        targetState: "second",
+        priority: 1,
+      } as AutoTransitionConfig<TestState>);
+
+      // Start in the "start" state and evaluate transitions
+      await fs.start();
+      await fs.state.evaluateAutoTransitions({ value: 1 });
+
+      // The spy should only be called once because we should stop after the first successful transition
+      expect(spy.callCount).to.equal(3); // Two calls during start() (both return false) and one call during explicit evaluation
+      expect(fs.state.name).to.equal("first");
+    });
+
+    it("should continue evaluating when higher priority transitions fail", async () => {
+      interface TestState {
+        value: number;
+      }
+
+      const fs = new FluentState();
+      fs.from("start")
+        .to<TestState>("high", {
+          condition: (_, ctx) => ctx.value > 10,
+          targetState: "high",
+          priority: 2,
+        } as AutoTransitionConfig<TestState>)
+        .from("start")
+        .to<TestState>("low", {
+          condition: (_, ctx) => ctx.value > 0,
+          targetState: "low",
+          priority: 1,
+        } as AutoTransitionConfig<TestState>);
+
+      await fs.start();
+      await fs.state.evaluateAutoTransitions({ value: 5 });
+      expect(fs.state.name).to.equal("low");
     });
   });
 });

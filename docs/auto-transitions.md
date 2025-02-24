@@ -65,6 +65,126 @@ fs.from("retry")
   .or<AppState>("success", (state, context) => context.status === "success");
 ```
 
+## Enhanced Auto-transition Configuration
+
+Auto-transitions can be configured with additional options using the `AutoTransitionConfig` interface:
+
+```typescript
+interface AutoTransitionConfig<TContext = unknown> {
+  condition: (state: State, context: TContext) => boolean | Promise<boolean>;
+  targetState: string;
+  priority?: number;  // Higher numbers = higher priority
+}
+```
+
+### Priority-based Transitions
+
+When multiple auto-transitions are defined for a state, you can control their evaluation order using priorities:
+
+```typescript
+fs.from("start")
+  .to<AppState>("critical", {
+    condition: (_, ctx) => ctx.severity === "critical",
+    targetState: "critical",
+    priority: 3  // Highest priority, evaluated first
+  })
+  .or<AppState>("warning", {
+    condition: (_, ctx) => ctx.severity === "warning",
+    targetState: "warning",
+    priority: 2  // Medium priority
+  })
+  .or<AppState>("info", {
+    condition: (_, ctx) => ctx.severity === "info",
+    targetState: "info",
+    priority: 1  // Lowest priority
+  });
+```
+
+Key features of priority-based transitions:
+
+1. **Evaluation Order**: Transitions are evaluated in descending priority order (highest to lowest).
+2. **Default Priority**: When priority is not specified, it defaults to 0.
+3. **Equal Priority Behavior**: For transitions with equal priority, the original definition order is maintained.
+4. **Early Exit**: Evaluation stops after the first successful transition, regardless of remaining transitions.
+
+Example with mixed priorities:
+
+```typescript
+interface AppState {
+  errors: number;
+  warnings: number;
+  isActive: boolean;
+}
+
+fs.from("monitoring")
+  // High priority: Check critical errors first
+  .to<AppState>("error", {
+    condition: (_, ctx) => ctx.errors > 0,
+    targetState: "error",
+    priority: 2
+  })
+  // Medium priority: Check warnings
+  .or<AppState>("warning", {
+    condition: (_, ctx) => ctx.warnings > 0,
+    targetState: "warning",
+    priority: 1
+  })
+  // Default priority (0): Basic state check
+  .or<AppState>("inactive", (_, ctx) => !ctx.isActive);
+```
+
+### Best Practices for Priority-based Transitions
+
+1. **Priority Scale**
+   - Use a consistent scale (e.g., 0-5) across your application
+   - Reserve higher priorities for critical state changes
+   - Document your priority levels in comments
+
+2. **Logical Grouping**
+   ```typescript
+   // Critical system states (Priority 3)
+   .to("error", { condition: errorCheck, priority: 3 })
+   .or("systemFailure", { condition: failureCheck, priority: 3 })
+   
+   // Warning states (Priority 2)
+   .or("diskWarning", { condition: diskCheck, priority: 2 })
+   .or("memoryWarning", { condition: memoryCheck, priority: 2 })
+   
+   // Normal operations (Priority 1)
+   .or("active", { condition: activeCheck, priority: 1 })
+   .or("standby", { condition: standbyCheck, priority: 1 })
+   ```
+
+3. **Condition Complexity**
+   - Keep high-priority conditions simple and fast
+   - Place complex or time-consuming conditions at lower priorities
+   ```typescript
+   .to("error", {
+     condition: () => isSystemCritical(), // Simple, fast check
+     priority: 3
+   })
+   .or("warning", {
+     condition: async () => await complexAnalysis(), // Complex check
+     priority: 1
+   })
+   ```
+
+4. **Testing Considerations**
+   - Test priority ordering explicitly
+   - Verify that higher priority transitions block lower ones
+   - Test equal-priority transition ordering
+   ```typescript
+   it("should evaluate high priority before low", async () => {
+     const fs = new FluentState();
+     fs.from("start")
+       .to("high", { condition: () => true, priority: 2 })
+       .or("low", { condition: () => true, priority: 1 });
+     
+     await fs.start();
+     expect(fs.state.name).to.equal("high");
+   });
+   ```
+
 ## State Management Options
 
 ### Custom State Management

@@ -36,13 +36,15 @@ export class State {
   /** Cleanup function for state manager subscription */
   private unsubscribe?: () => void;
 
+  /** Flag to track if we're currently evaluating transitions */
+  private isEvaluating = false;
+
   constructor(name: string, fluentState: FluentState) {
     this.fluentState = fluentState;
     this.name = name;
     this.stateManager = new StateManager({});
-    this.unsubscribe = this.stateManager.subscribe(async (context) => {
-      await this.evaluateAutoTransitions(context);
-    });
+    // Don't automatically subscribe to state changes
+    // We'll evaluate transitions only when explicitly called
   }
 
   /**
@@ -50,16 +52,27 @@ export class State {
    * If the target state doesn't exist, it will be created.
    *
    * @param name - The name of the target state to transition to.
-   * @param autoTransition - Optional condition that, when true, will automatically trigger this transition.
+   * @param config - Optional auto-transition configuration or condition function
    * @returns A Transition object that can be used to chain additional state configurations.
    */
-  to<TContext>(name: string, autoTransition?: AutoTransition<TContext>): Transition {
+  to<TContext>(name: string, config?: AutoTransitionConfig<TContext> | AutoTransition<TContext>): Transition {
     this.fluentState._addState(name);
-    if (autoTransition) {
-      this.autoTransitions.push({
-        condition: autoTransition,
-        targetState: name,
-      });
+
+    if (config) {
+      // If config is a function, treat it as a condition
+      if (typeof config === "function") {
+        this.autoTransitions.push({
+          condition: config,
+          targetState: name,
+        });
+      } else {
+        // Otherwise it's a full config object
+        this.autoTransitions.push({
+          condition: config.condition,
+          targetState: name,
+          priority: config.priority,
+        });
+      }
     }
 
     return this._addTransition(name);
@@ -75,12 +88,10 @@ export class State {
     // Clean up existing subscription if any
     if (this.unsubscribe) {
       this.unsubscribe();
+      this.unsubscribe = undefined;
     }
 
     this.stateManager = stateManager;
-    this.unsubscribe = stateManager.subscribe(async (context) => {
-      await this.evaluateAutoTransitions(context);
-    });
   }
 
   /**
@@ -92,6 +103,8 @@ export class State {
   updateContext<T>(update: Partial<T>): void {
     const currentState = this.stateManager.getState() as T;
     this.stateManager.setState({ ...currentState, ...update });
+    // Evaluate transitions after context update
+    this.evaluateAutoTransitions(this.stateManager.getState());
   }
 
   /**
@@ -99,82 +112,6 @@ export class State {
    */
   getContext<T>(): T {
     return this.stateManager.getState() as T;
-  }
-
-  /**
-   * Evaluates all auto-transitions with the given context.
-   * This is called automatically when the context is updated,
-   * but can also be called manually if needed.
-   *
-   * @param context - The context to evaluate transitions against
-   * @returns true if a transition occurred
-   */
-  async evaluateAutoTransitions<TContext = unknown>(context: TContext): Promise<boolean> {
-    for (const autoTransition of this.autoTransitions) {
-      const transitioned = await this.evaluateAutoTransition(autoTransition, context);
-      if (transitioned) return true;
-    }
-    return false;
-  }
-
-  /**
-   * Evaluates a single auto-transition configuration
-   * @returns true if transition occurred, false otherwise
-   */
-  private async evaluateAutoTransition<TContext>(config: AutoTransitionConfig<TContext>, context: TContext): Promise<boolean> {
-    try {
-      const shouldTransition = await config.condition(this, context);
-      if (shouldTransition) {
-        await this.fluentState.transition(config.targetState).catch((error) => {
-          console.error("Auto-transition failed:", error);
-        });
-        return true;
-      }
-    } catch (error) {
-      console.error("Error in auto-transition condition", error);
-    }
-    return false;
-  }
-
-  /**
-   * Checks if this state can transition to the specified target state.
-   *
-   * @param name - The name of the target state to check.
-   * @returns True if a transition exists to the target state, false otherwise.
-   */
-  can(name: string): boolean {
-    return this.hasTransition(name);
-  }
-
-  /**
-   * Adds a handler that executes when entering this state.
-   * Multiple enter handlers can be added and they will execute in parallel.
-   *
-   * @param handler - Function to execute when entering this state.
-   * @returns This State instance for method chaining.
-   */
-  onEnter(handler: EnterEventHandler): State {
-    this.enterEventHandlers.push(handler);
-    return this;
-  }
-
-  /**
-   * Adds a handler that executes when exiting this state.
-   * Multiple exit handlers can be added and they will execute in parallel.
-   *
-   * @param handler - Function to execute when exiting this state.
-   * @returns This State instance for method chaining.
-   */
-  onExit(handler: ExitEventHandler): State {
-    this.exitEventHandlers.push(handler);
-    return this;
-  }
-
-  /**
-   * Checks if this state has a transition to the specified state.
-   */
-  private hasTransition(name: string): boolean {
-    return this.transitions.indexOf(name) >= 0;
   }
 
   /**
@@ -186,7 +123,10 @@ export class State {
     await Promise.all(this.enterEventHandlers.map((handler) => handler(previousState, this)));
 
     // Then check auto-transitions with empty context
-    await this.evaluateAutoTransitions({});
+    // Only evaluate if we have auto-transitions and we're not already transitioning
+    if (this.autoTransitions.length > 0) {
+      await this.evaluateAutoTransitions({});
+    }
   }
 
   /**
@@ -241,5 +181,89 @@ export class State {
     }
 
     return transition;
+  }
+
+  /**
+   * Checks if this state can transition to the specified target state.
+   *
+   * @param name - The name of the target state to check.
+   * @returns True if a transition exists to the target state, false otherwise.
+   */
+  can(name: string): boolean {
+    return this.hasTransition(name);
+  }
+
+  /**
+   * Adds a handler that executes when entering this state.
+   * Multiple enter handlers can be added and they will execute in parallel.
+   *
+   * @param handler - Function to execute when entering this state.
+   * @returns This State instance for method chaining.
+   */
+  onEnter(handler: EnterEventHandler): State {
+    this.enterEventHandlers.push(handler);
+    return this;
+  }
+
+  /**
+   * Adds a handler that executes when exiting this state.
+   * Multiple exit handlers can be added and they will execute in parallel.
+   *
+   * @param handler - Function to execute when exiting this state.
+   * @returns This State instance for method chaining.
+   */
+  onExit(handler: ExitEventHandler): State {
+    this.exitEventHandlers.push(handler);
+    return this;
+  }
+
+  /**
+   * Checks if this state has a transition to the specified state.
+   */
+  private hasTransition(name: string): boolean {
+    return this.transitions.indexOf(name) >= 0;
+  }
+
+  /**
+   * Evaluates all auto-transitions with the given context.
+   * Transitions are evaluated in order of priority (highest to lowest).
+   * For transitions with the same priority, the order they were defined is maintained.
+   *
+   * @param context - The context to evaluate transitions against
+   * @returns true if a transition occurred
+   */
+  async evaluateAutoTransitions<TContext = unknown>(context: TContext): Promise<boolean> {
+    if (this.isEvaluating) {
+      return false;
+    }
+
+    this.isEvaluating = true;
+    try {
+      // Sort transitions by priority (highest first)
+      const sortedTransitions = [...this.autoTransitions].sort((a, b) => {
+        const priorityA = a.priority ?? 0;
+        const priorityB = b.priority ?? 0;
+        return priorityB - priorityA;
+      });
+
+      // Evaluate transitions in priority order
+      for (const transition of sortedTransitions) {
+        try {
+          const shouldTransition = await transition.condition(this, context);
+          if (shouldTransition) {
+            await this.fluentState.transition(transition.targetState).catch((error) => {
+              console.error("Auto-transition failed:", error);
+            });
+            return true;
+          }
+        } catch (error) {
+          console.error("Error in auto-transition condition", error);
+          // Continue to next transition if this one errors
+        }
+      }
+      return false;
+    } finally {
+      this.isEvaluating = false;
+    }
   }
 }
