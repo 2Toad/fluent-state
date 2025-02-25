@@ -26,6 +26,66 @@ Benefits:
 - Improved handling of race conditions
 - Automatic retry for transient failures
 
+User Story:
+As a developer using FluentState in a complex application,
+I want to have fine-grained control over how auto-transitions are evaluated and executed,
+So that I can handle race conditions, prioritize certain transitions, and make my state machine more resilient to transient failures.
+
+Acceptance Criteria:
+
+1. Priority-based Transitions
+   - When multiple auto-transitions are possible from a state, they are evaluated in order of priority (highest to lowest)
+   - Transitions with the same priority are evaluated in the order they were defined
+   - Transitions without a priority value default to priority 0
+   - Only the first successful transition (highest priority) is executed
+
+2. Debounced Transitions
+   - When a debounce value is set, the transition evaluation waits for the specified milliseconds after the last context update
+   - If another context update occurs during the debounce period, the timer resets
+   - Debounced transitions maintain their priority order when evaluated
+   - Resources (timers) are properly cleaned up when the state changes or the state machine is destroyed
+
+3. Retry Configuration
+   - Failed transition attempts (where condition throws an error) are retried up to maxAttempts times
+   - Each retry attempt waits for the specified delay in milliseconds
+   - Retries stop immediately if the condition returns false (vs throwing an error)
+   - Retry attempts are logged for debugging purposes
+   - The state machine remains responsive to other transitions during retry delays
+
+Example Usage:
+```typescript
+// Priority example
+fs.from("reviewing")
+  .to<Document>("approved", {
+    condition: (_, doc) => doc.approvals >= 2,
+    priority: 2  // Checked first
+  })
+  .to<Document>("rejected", {
+    condition: (_, doc) => doc.rejections >= 1,
+    priority: 1  // Checked second
+  });
+
+// Debounce example
+fs.from("typing")
+  .to<SearchState>("searching", {
+    condition: (_, state) => state.query.length >= 3,
+    debounce: 300  // Wait 300ms after last keystroke
+  });
+
+// Retry example
+fs.from("connecting")
+  .to<ApiState>("connected", {
+    condition: async (_, state) => {
+      const response = await checkConnection(state.endpoint);
+      return response.isConnected;
+    },
+    retryConfig: {
+      maxAttempts: 3,
+      delay: 1000  // Wait 1 second between attempts
+    }
+  });
+```
+
 ## 2. Transition History
 Dependencies: None
 
