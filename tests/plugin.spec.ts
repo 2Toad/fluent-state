@@ -164,14 +164,14 @@ describe("Plugin System", () => {
 
       const asyncMiddleware1 = async (prev: State | null, next: string, transition: () => void) => {
         executionOrder.push("middleware1 start");
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         executionOrder.push("middleware1 end");
         transition();
       };
 
       const asyncMiddleware2 = async (prev: State | null, next: string, transition: () => void) => {
         executionOrder.push("middleware2 start");
-        await new Promise((resolve) => setTimeout(resolve, 25)); // shorter delay
+        await new Promise((resolve) => setTimeout(resolve, 5)); // shorter delay
         executionOrder.push("middleware2 end");
         transition();
       };

@@ -42,7 +42,7 @@ export function createTransitionGuard(handler: TransitionMiddlewareHandler): Flu
           proceeded = true;
         });
       } catch (error) {
-        console.error("Error in transition guard:", error);
+        console.error("Error in transition guard", error);
       }
 
       return proceeded;

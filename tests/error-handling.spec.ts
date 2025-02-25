@@ -33,7 +33,7 @@ describe("Error Handling", () => {
 
   it("should handle asynchronous transitions", async () => {
     fs.from("vegetable").to("diced");
-    fs.when("diced").do(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    fs.when("diced").do(() => new Promise((resolve) => setTimeout(resolve, 10)));
 
     const result = await fs.transition("diced");
     expect(result).to.be.true;

@@ -6,13 +6,21 @@ import { LifeCycleHandler } from "./types";
 import { FluentStatePlugin } from "./types";
 import { TransitionError, StateError } from "./types";
 
+/**
+ * The main class for building and managing a state machine.
+ * Provides a fluent interface for defining states and transitions.
+ */
 export class FluentState {
+  /** A map of all states in the state machine */
   readonly states: Map<string, State> = new Map();
 
+  /** The current state of the state machine */
   state: State;
 
+  /** The observer for handling lifecycle events */
   readonly observer: Observer = new Observer();
 
+  /** Middleware functions that intercept transitions */
   private middlewares: ((prev: State | null, next: string, transition: () => void) => void | Promise<void>)[] = [];
 
   /**
@@ -40,6 +48,13 @@ export class FluentState {
     return this;
   }
 
+  /**
+   * Creates a state in the state machine.
+   * If this is the first state added, it becomes the current state.
+   *
+   * @param name - The name of the state to create.
+   * @returns The State object that can be used to define transitions.
+   */
   from(name: string): State {
     let state = this._getState(name);
 
@@ -49,6 +64,16 @@ export class FluentState {
     }
 
     return state;
+  }
+
+  /**
+   * Checks if the current state can transition to the specified target state.
+   *
+   * @param name - The name of the target state to check.
+   * @returns True if the current state can transition to the target state, false otherwise.
+   */
+  can(name: string): boolean {
+    return this.state && this.state.can(name);
   }
 
   /**
@@ -65,10 +90,6 @@ export class FluentState {
       }
     }
     return this;
-  }
-
-  can(name: string): boolean {
-    return this.state && this.state.can(name);
   }
 
   /**
@@ -104,6 +125,14 @@ export class FluentState {
     return name ? this.transition(name) : false;
   }
 
+  /**
+   * Starts a callback chain for a specific state.
+   * This is the entry point for defining state-specific callbacks that execute when entering the state.
+   *
+   * @param name - The name of the state to create callbacks for.
+   * @returns An Event object that can be used to define callbacks using `do()` and chain them with `and()`.
+   * @throws {StateError} If the specified state doesn't exist.
+   */
   when(name: string): Event {
     const state = this._getState(name);
     if (!state) {
@@ -113,6 +142,11 @@ export class FluentState {
     return new Event(state);
   }
 
+  /**
+   * Removes a state from the state machine.
+   *
+   * @param name - The name of the state to remove.
+   */
   remove(name: string): void {
     const stateToRemove = this._getState(name);
     if (!stateToRemove) return;
@@ -131,20 +165,42 @@ export class FluentState {
     }
   }
 
+  /**
+   * Clears all states from the state machine.
+   */
   clear(): void {
     this.states.clear();
     this.state = null;
   }
 
+  /**
+   * Checks if a state exists in the state machine.
+   *
+   * @param name - The name of the state to check.
+   * @returns True if the state exists, false otherwise.
+   */
   has(name: string): boolean {
     return !!this._getState(name);
   }
 
+  /**
+   * Adds an observer for a specific lifecycle event.
+   *
+   * @param event - The lifecycle event to observe.
+   * @param handler - The handler function to execute when the event occurs.
+   * @returns The FluentState instance for chaining.
+   */
   observe(event: Lifecycle, handler: LifeCycleHandler): FluentState {
     this.observer.add(event, handler);
     return this;
   }
 
+  /**
+   * Sets the current state of the state machine without triggering a transition.
+   *
+   * @param name - The name of the state to set as the current state.
+   * @returns The State object that was set as the current state.
+   */
   setState(name: string): State {
     const state = this._getState(name);
     if (!state) {
@@ -155,6 +211,12 @@ export class FluentState {
     return state;
   }
 
+  /**
+   * Adds a new state to the state machine.
+   *
+   * @param name - The name of the state to add.
+   * @returns The State object that was added.
+   */
   _addState(name: string): State {
     let state = this._getState(name);
     if (state) {
@@ -166,10 +228,23 @@ export class FluentState {
     return state;
   }
 
+  /**
+   * Gets a state from the state machine by name.
+   *
+   * @param name - The name of the state to get.
+   * @returns The State object if found, null otherwise.
+   */
   _getState(name: string): State {
     return this.states.get(name);
   }
 
+  /**
+   * Runs all middleware functions that intercept transitions.
+   *
+   * @param currentState - The current state of the state machine.
+   * @param nextStateName - The name of the next state to transition to.
+   * @returns True if all middlewares proceed, false otherwise.
+   */
   private async _runMiddlewares(currentState: State, nextStateName: string): Promise<boolean> {
     if (this.middlewares.length === 0) return true;
 
@@ -186,6 +261,13 @@ export class FluentState {
     return true;
   }
 
+  /**
+   * Executes a transition between two states.
+   *
+   * @param currentState - The current state of the state machine.
+   * @param nextState - The next state to transition to.
+   * @returns True if the transition was successful, false otherwise.
+   */
   private async _executeTransition(currentState: State, nextState: State): Promise<boolean> {
     // BeforeTransition must occur first to allow for any pre-transition logic or validation,
     // and to provide an opportunity to cancel the transition if necessary.

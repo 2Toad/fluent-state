@@ -1,6 +1,10 @@
 import { expect } from "chai";
+import * as chai from "chai";
+import * as spies from "chai-spies";
 import { FluentState } from "../src/fluent-state";
 import { createTransitionGuard } from "../src/plugins/transition-guard";
+
+chai.use(spies);
 
 // Test suite for transition guard
 
@@ -13,6 +17,7 @@ describe("Transition Guard", () => {
 
   afterEach(() => {
     fs.clear();
+    chai.spy.restore();
   });
 
   it("should allow transitions when proceed is called", async () => {
@@ -42,8 +47,12 @@ describe("Transition Guard", () => {
   });
 
   it("should handle errors in middleware gracefully", async () => {
+    console.log("ℹ️  The following error is expected as part of the error handling test:");
+    const consoleSpy = chai.spy.on(console, "error");
+    const testError = new Error("Middleware error");
+
     const middleware = createTransitionGuard(() => {
-      throw new Error("Middleware error");
+      throw testError;
     });
 
     fs.use(middleware);
@@ -52,6 +61,7 @@ describe("Transition Guard", () => {
     const result = await fs.transition("end");
     expect(result).to.be.false;
     expect(fs.state.name).to.equal("start");
+    expect(consoleSpy).to.have.been.called.with("Error in transition guard");
   });
 
   it("should correctly influence transitions within a flow", async () => {
@@ -103,7 +113,7 @@ describe("Middleware Edge Cases", () => {
       addToOrder("middleware start");
 
       // Simulate async operation
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       addToOrder("async operation complete");
 
       proceed();
