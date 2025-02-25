@@ -1,5 +1,6 @@
 import { AutoTransitionConfig, SerializedTransitionGroup, TransitionHistoryEntry } from "./types";
 import { FluentState } from "./fluent-state";
+import { TransitionGroupMetrics, TransitionGroupSnapshot } from "./types";
 
 // Define event handler types
 export type TransitionHandler = (fromState: string, toState: string, context?: unknown) => void;
@@ -85,6 +86,15 @@ export class TransitionGroup {
   /** Middleware functions for intercepting transitions in this group */
   private middlewares: GroupTransitionMiddleware[] = [];
 
+  /** Metrics for tracking transition performance and frequency */
+  private metrics: TransitionGroupMetrics;
+
+  /** History of snapshots taken for this group */
+  private snapshots: TransitionGroupSnapshot[] = [];
+
+  /** Maximum number of snapshots to keep in history */
+  private maxSnapshots = 10;
+
   /**
    * Creates a new TransitionGroup.
    *
@@ -108,6 +118,8 @@ export class TransitionGroup {
     if (parentGroup) {
       this.setParent(parentGroup);
     }
+
+    this.initializeMetrics();
   }
 
   /**
@@ -1339,6 +1351,229 @@ export class TransitionGroup {
     }
 
     return this;
+  }
+
+  /**
+   * Creates a snapshot of the current state of this transition group.
+   * @param label Optional label to identify this snapshot
+   * @returns The created snapshot
+   */
+  public createSnapshot(label?: string): TransitionGroupSnapshot {
+    // Helper to safely get a number value from a potentially function property
+    const getNumberValue = (value?: number | ((context: unknown) => number)): number | undefined => {
+      if (typeof value === "number") {
+        return value;
+      }
+      return undefined; // Skip function values as they can't be serialized
+    };
+
+    const snapshot: TransitionGroupSnapshot = {
+      name: this.name,
+      namespace: this.namespace,
+      label,
+      enabled: this.enabled,
+      preventManualTransitions: this.preventManualTransitions,
+      config: {
+        priority: getNumberValue(this.config.priority),
+        debounce: getNumberValue(this.config.debounce),
+        retryConfig: this.config.retryConfig
+          ? {
+              maxAttempts: getNumberValue(this.config.retryConfig.maxAttempts) || 0,
+              delay: getNumberValue(this.config.retryConfig.delay) || 0,
+            }
+          : undefined,
+      },
+      transitions: Array.from(this.transitions.entries()).flatMap(([from, toMap]) =>
+        Array.from(toMap.entries()).map(([to]) => {
+          // Get tags for this transition from the tagsMap
+          const transitionTags: string[] = [];
+          this.tagsMap.forEach((transitions, tag) => {
+            for (const t of transitions) {
+              if (t[0] === from && t[1] === to) {
+                transitionTags.push(tag);
+                break;
+              }
+            }
+          });
+
+          return {
+            from,
+            to,
+            tags: transitionTags,
+          };
+        }),
+      ),
+      timestamp: Date.now(),
+      parentGroup: this.parentGroup?.name,
+      childGroups: Array.from(this.childGroups).map((g) => g.name),
+    };
+
+    // Add to snapshots history, maintaining the max limit
+    this.snapshots.push(snapshot);
+    if (this.snapshots.length > this.maxSnapshots) {
+      this.snapshots.shift();
+    }
+
+    return snapshot;
+  }
+
+  /**
+   * Retrieves all snapshots for this transition group.
+   * @returns Array of snapshots
+   */
+  public getSnapshots(): TransitionGroupSnapshot[] {
+    return [...this.snapshots];
+  }
+
+  /**
+   * Clears all snapshots for this transition group.
+   */
+  public clearSnapshots(): void {
+    this.snapshots = [];
+  }
+
+  /**
+   * Sets the maximum number of snapshots to keep in history.
+   * @param max Maximum number of snapshots
+   */
+  public setMaxSnapshots(max: number): void {
+    if (max < 1) {
+      throw new Error("Maximum number of snapshots must be at least 1");
+    }
+    this.maxSnapshots = max;
+
+    // Trim existing snapshots if needed
+    if (this.snapshots.length > this.maxSnapshots) {
+      this.snapshots = this.snapshots.slice(-this.maxSnapshots);
+    }
+  }
+
+  /**
+   * Gets the current metrics for this transition group.
+   * @returns The current metrics
+   */
+  public getMetrics(): TransitionGroupMetrics {
+    return { ...this.metrics };
+  }
+
+  /**
+   * Resets the metrics for this transition group.
+   */
+  public resetMetrics(): void {
+    this.initializeMetrics();
+  }
+
+  /**
+   * Initializes the metrics tracking for this transition group.
+   * Called during construction and when resetting metrics.
+   */
+  private initializeMetrics(): void {
+    this.metrics = {
+      name: this.name,
+      namespace: this.namespace,
+      transitionAttempts: 0,
+      successfulTransitions: 0,
+      failedTransitions: 0,
+      averageTransitionTime: 0,
+      transitionFrequency: {},
+      collectionStartTime: Date.now(),
+      lastUpdated: Date.now(),
+    };
+  }
+
+  /**
+   * Updates metrics after a transition attempt.
+   * @param from Source state
+   * @param to Target state
+   * @param success Whether the transition was successful
+   * @param duration Time taken for the transition in milliseconds
+   */
+  private updateMetrics(from: string, to: string, success: boolean, duration: number): void {
+    // Update attempt counts
+    this.metrics.transitionAttempts++;
+    if (success) {
+      this.metrics.successfulTransitions++;
+    } else {
+      this.metrics.failedTransitions++;
+    }
+
+    // Update average transition time
+    const totalTransitions = this.metrics.successfulTransitions + this.metrics.failedTransitions;
+    this.metrics.averageTransitionTime = (this.metrics.averageTransitionTime * (totalTransitions - 1) + duration) / totalTransitions;
+
+    // Update transition frequency
+    if (!this.metrics.transitionFrequency[from]) {
+      this.metrics.transitionFrequency[from] = {};
+    }
+    if (!this.metrics.transitionFrequency[from][to]) {
+      this.metrics.transitionFrequency[from][to] = 0;
+    }
+    this.metrics.transitionFrequency[from][to]++;
+
+    // Update most frequent transition
+    const currentCount = this.metrics.transitionFrequency[from][to];
+    if (!this.metrics.mostFrequentTransition || currentCount > this.metrics.mostFrequentTransition.count) {
+      this.metrics.mostFrequentTransition = {
+        from,
+        to,
+        count: currentCount,
+      };
+    }
+
+    // Update timestamp
+    this.metrics.lastUpdated = Date.now();
+  }
+
+  /**
+   * Attempts to transition to the specified state.
+   * This method will check if the group is enabled and run any middleware before performing the transition.
+   *
+   * @param to - The target state name
+   * @param context - Optional context for the transition
+   * @returns Promise that resolves to true if the transition was successful, false otherwise
+   */
+  public transition(to: string, context?: unknown): Promise<boolean> {
+    const startTime = performance.now();
+    const currentState = this.fluentState.getCurrentState();
+    const from = currentState.name; // Get the name string from the State object
+
+    return new Promise<boolean>((resolve) => {
+      // Check if the group is enabled
+      if (!this.isEnabled(context)) {
+        this.updateMetrics(from, to, false, performance.now() - startTime);
+        resolve(false);
+        return;
+      }
+
+      // Run middleware
+      this._runMiddleware(from, to, context)
+        .then((middlewareResult) => {
+          if (!middlewareResult) {
+            this.updateMetrics(from, to, false, performance.now() - startTime);
+            resolve(false);
+            return;
+          }
+
+          // Perform the transition
+          this.fluentState
+            .transition(to, context)
+            .then((success) => {
+              const duration = performance.now() - startTime;
+              this.updateMetrics(from, to, success, duration);
+              resolve(success);
+            })
+            .catch(() => {
+              const duration = performance.now() - startTime;
+              this.updateMetrics(from, to, false, duration);
+              resolve(false);
+            });
+        })
+        .catch(() => {
+          const duration = performance.now() - startTime;
+          this.updateMetrics(from, to, false, duration);
+          resolve(false);
+        });
+    });
   }
 }
 

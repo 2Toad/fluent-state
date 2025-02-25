@@ -317,9 +317,9 @@ Acceptance Criteria:
    - ✅ Provide methods to navigate the group hierarchy: `group.parent()`, `group.children()`
    - ✅ Support for composition patterns to reuse group definitions across state machines
 
-9. Testing and Debugging Support
-   - Provide snapshot capabilities for group state: `group.createSnapshot()`
-   - Provide metrics on group transition frequency and performance
+8. Testing and Debugging Support
+   - ✅ Provide snapshot capabilities for group state: `group.createSnapshot()`
+   - ✅ Provide metrics on group transition frequency and performance
 
 Example Usage:
 ```typescript

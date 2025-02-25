@@ -244,3 +244,72 @@ export interface SerializedTransitionGroup {
   parentGroup?: string; // Name of the parent group for configuration inheritance
   childGroups?: string[]; // Names of child groups for hierarchical organization
 }
+
+/**
+ * Snapshot of a transition group's state at a point in time.
+ * Used for debugging and testing purposes.
+ */
+export interface TransitionGroupSnapshot {
+  /** The name of the group */
+  name: string;
+  /** The namespace of the group, if any */
+  namespace?: string;
+  /** Optional label to identify this snapshot */
+  label?: string;
+  /** Whether the group was enabled at the time of the snapshot */
+  enabled: boolean;
+  /** Whether manual transitions were prevented at the time of the snapshot */
+  preventManualTransitions: boolean;
+  /** The group's configuration at the time of the snapshot */
+  config: {
+    priority?: number;
+    debounce?: number;
+    retryConfig?: {
+      maxAttempts: number;
+      delay: number;
+    };
+  };
+  /** The transitions in the group at the time of the snapshot */
+  transitions: Array<{
+    from: string;
+    to: string;
+    tags?: string[];
+  }>;
+  /** The timestamp when the snapshot was created */
+  timestamp: number;
+  /** The parent group name, if any */
+  parentGroup?: string;
+  /** The child group names, if any */
+  childGroups?: string[];
+}
+
+/**
+ * Performance metrics for a transition group.
+ * Used for monitoring and optimizing transition performance.
+ */
+export interface TransitionGroupMetrics {
+  /** The name of the group */
+  name: string;
+  /** The namespace of the group, if any */
+  namespace?: string;
+  /** The total number of transitions attempted in this group */
+  transitionAttempts: number;
+  /** The number of successful transitions in this group */
+  successfulTransitions: number;
+  /** The number of failed transitions in this group */
+  failedTransitions: number;
+  /** Average time taken for transitions in milliseconds */
+  averageTransitionTime: number;
+  /** The most frequently used transition in this group */
+  mostFrequentTransition?: {
+    from: string;
+    to: string;
+    count: number;
+  };
+  /** Transition frequency by source-target pair */
+  transitionFrequency: Record<string, Record<string, number>>;
+  /** Timestamp when metrics collection started */
+  collectionStartTime: number;
+  /** Timestamp of the last update to these metrics */
+  lastUpdated: number;
+}
