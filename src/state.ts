@@ -181,7 +181,6 @@ export class State {
     }
 
     const index = Math.floor(Math.random() * transitions.length);
-    // eslint-disable-next-line security/detect-object-injection -- index is safely generated and transitions array is internal
     return transitions[index];
   }
 
@@ -369,7 +368,6 @@ export class State {
   private scheduleDebouncedTransitions<TContext>(transitions: AutoTransitionConfig[], context: TContext): void {
     // For each debounced transition, clear existing timer and create a new one
     for (let i = 0; i < transitions.length; i++) {
-      // eslint-disable-next-line security/detect-object-injection -- index is safely generated and transitions array is internal
       const transition = transitions[i];
       const debounceTime = transition.debounce ?? 0;
 

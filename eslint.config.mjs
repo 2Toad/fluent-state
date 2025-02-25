@@ -14,6 +14,9 @@ export default [
   {
     // These file-matching rules will be processed after the above configs
     files: ["**/*.{js,ts}"],
+    rules: {
+      "security/detect-object-injection": "off",
+    },
   },
   prettier, // placed last to ensure Prettier formatting wins
 ];

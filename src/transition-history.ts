@@ -146,7 +146,6 @@ export class TransitionHistory {
       // Add each entry to the history in reverse order to maintain chronology
       // (since add() adds to the beginning)
       for (let i = parsedHistory.length - 1; i >= 0; i--) {
-        // eslint-disable-next-line security/detect-object-injection -- index is safely generated and parsedHistory array is internal
         history.add(parsedHistory[i]);
       }
 

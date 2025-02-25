@@ -10,8 +10,11 @@ import {
   FluentStateOptions,
   TransitionHistoryOptions,
   StateManagerConfig,
+  AutoTransitionConfig,
+  SerializedTransitionGroup,
 } from "./types";
 import { TransitionHistory } from "./transition-history";
+import { TransitionGroup } from "./transition-group";
 
 /**
  * The main class for building and managing a state machine.
@@ -20,6 +23,9 @@ import { TransitionHistory } from "./transition-history";
 export class FluentState {
   /** A map of all states in the state machine */
   readonly states: Map<string, State> = new Map();
+
+  /** A map of all transition groups in the state machine */
+  readonly groups: Map<string, TransitionGroup> = new Map();
 
   /** The current state of the state machine */
   state: State;
@@ -413,6 +419,125 @@ export class FluentState {
     }
 
     return true;
+  }
+
+  /**
+   * Creates a new transition group with the given name.
+   *
+   * @param name - The unique name for the group
+   * @returns The newly created group
+   * @throws If a group with the same name already exists
+   */
+  createGroup(name: string): TransitionGroup {
+    if (this.groups.has(name)) {
+      throw new StateError(`Group with name "${name}" already exists`);
+    }
+
+    const group = new TransitionGroup(name, this);
+    this.groups.set(name, group);
+
+    return group;
+  }
+
+  /**
+   * Creates a group from a serialized configuration.
+   *
+   * @param serialized - The serialized group configuration
+   * @param conditionMap - Map of transition conditions by source and target state
+   * @returns The created group
+   */
+  createGroupFromConfig(
+    serialized: SerializedTransitionGroup,
+    conditionMap: Record<string, Record<string, AutoTransitionConfig["condition"]>> = {},
+  ): TransitionGroup {
+    const fullName = serialized.namespace ? `${serialized.namespace}:${serialized.name}` : serialized.name;
+
+    if (this.groups.has(fullName)) {
+      throw new StateError(`Group with name "${fullName}" already exists`);
+    }
+
+    const group = new TransitionGroup(fullName, this);
+    group.deserialize(serialized, conditionMap);
+
+    this.groups.set(fullName, group);
+    return group;
+  }
+
+  /**
+   * Gets a transition group by name.
+   *
+   * @param name - The name of the group to retrieve
+   * @returns The group or null if not found
+   */
+  group(name: string): TransitionGroup | null {
+    return this.groups.get(name) || null;
+  }
+
+  /**
+   * Removes a transition group by name.
+   *
+   * @param name - The name of the group to remove
+   * @returns True if the group was found and removed, false otherwise
+   */
+  removeGroup(name: string): boolean {
+    return this.groups.delete(name);
+  }
+
+  /**
+   * Gets all transition groups in this state machine.
+   *
+   * @returns An array of all transition groups
+   */
+  getAllGroups(): TransitionGroup[] {
+    return Array.from(this.groups.values());
+  }
+
+  /**
+   * Exports all groups as serialized configurations.
+   *
+   * @returns An array of serialized group configurations
+   */
+  exportGroups(): SerializedTransitionGroup[] {
+    return this.getAllGroups().map((group) => group.serialize());
+  }
+
+  /**
+   * Imports groups from serialized configurations.
+   *
+   * @param groups - The serialized group configurations
+   * @param conditionMaps - Map of condition functions for each group, indexed by group name
+   * @param options - Import options
+   * @returns This FluentState instance for chaining
+   */
+  importGroups(
+    groups: SerializedTransitionGroup[],
+    conditionMaps: Record<string, Record<string, Record<string, AutoTransitionConfig["condition"]>>> = {},
+    options: {
+      skipExisting?: boolean;
+      replaceExisting?: boolean;
+    } = {},
+  ): FluentState {
+    groups.forEach((serialized) => {
+      const fullName = serialized.namespace ? `${serialized.namespace}:${serialized.name}` : serialized.name;
+
+      // Check if the group already exists
+      if (this.groups.has(fullName)) {
+        if (options.skipExisting) {
+          return; // Skip this group
+        } else if (options.replaceExisting) {
+          this.removeGroup(fullName); // Remove existing group
+        } else {
+          throw new StateError(`Group with name "${fullName}" already exists`);
+        }
+      }
+
+      // Create the group from the serialized configuration
+      // Use Object.prototype.hasOwnProperty for safe property access
+      const groupConditionMap = Object.prototype.hasOwnProperty.call(conditionMaps, fullName) ? conditionMaps[fullName] : {};
+      this.createGroupFromConfig(serialized, groupConditionMap);
+    });
+
+    return this;
   }
 }
 

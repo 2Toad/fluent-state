@@ -282,7 +282,6 @@ export class StateManager<T extends object> implements IStateManager<T> {
     const storedDependencies = this.memoizationDependencies.get(key) || [];
 
     // If the dependencies array has changed, consider it as changed
-    // eslint-disable-next-line security/detect-object-injection -- This is a safe use of object injection
     if (storedDependencies.length !== dependencies.length || !storedDependencies.every((dep, i) => dep === dependencies[i])) {
       return true;
     }

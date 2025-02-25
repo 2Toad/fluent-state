@@ -82,6 +82,7 @@ export interface AutoTransitionConfig<TContext = unknown> {
     maxAttempts: number;
     delay: number;
   };
+  groupName?: string; // The name of the group this transition belongs to
 }
 
 /**
@@ -214,4 +215,26 @@ export interface IStateManager<T> {
   setState(update: Partial<T>): void;
   subscribe(listener: StateListener<T>): () => void;
   derive?<R>(key: string, deriveFn: (state: T) => R, dependencies?: string[]): R;
+}
+
+/**
+ * Serialized representation of a transition group.
+ */
+export interface SerializedTransitionGroup {
+  name: string;
+  namespace?: string;
+  enabled: boolean;
+  config: {
+    priority?: number;
+    debounce?: number;
+    retryConfig?: {
+      maxAttempts: number;
+      delay: number;
+    };
+  };
+  transitions: Array<{
+    from: string;
+    to: string;
+    config?: Omit<AutoTransitionConfig, "condition">; // Condition functions cannot be serialized
+  }>;
 }

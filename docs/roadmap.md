@@ -240,6 +240,143 @@ Benefits:
 - Ability to enable/disable groups of transitions
 - Improved maintainability
 
+User Story:
+As a developer working with complex state machines in FluentState,
+I want to organize related transitions into logical groups that can be managed collectively,
+So that I can better structure my application's state flow, enable/disable sets of transitions as a unit, and improve the maintainability of my state machine.
+
+Acceptance Criteria:
+
+1. Group Creation and Management
+   - Developers can create transition groups using a fluent API: `fluentState.createGroup('groupName')`
+   - Groups can be chained with additional configuration: `fluentState.createGroup('groupName').withConfig({ priority: 2 })`
+   - Groups can be retrieved using a fluent method: `fluentState.group('groupName')`
+   - Return `null` or throw a specific error when a group is not found
+   - The API prevents duplicate group names within the same state machine
+   - Groups can be removed using a fluent method: `fluentState.removeGroup('groupName')`
+   - Provide a mechanism to list all available groups: `fluentState.getAllGroups()`
+   - Support for group namespaces or categories (e.g., `authentication:login`, `authentication:register`)
+   - Option to initialize groups from a serialized configuration object
+
+2. Transition Definition and Organization
+   - Transitions can be added to a group using a fluent syntax: `group.from('stateA').to('stateB', config)`
+   - Multiple transitions can be chained: `group.from('stateA').to('stateB').or('stateC')`
+   - The group maintains direct references to the original Transition objects rather than recreating them
+   - Transitions in a group are properly registered with the FluentState instance
+   - Transitions can be removed using a fluent method: `group.removeTransition('stateA', 'stateB')`
+   - When a state is removed from the state machine, any transitions involving that state are automatically removed from all groups
+   - Method to check if a specific transition belongs to a group: `group.hasTransition('stateA', 'stateB')`
+   - Support for transition tagging within groups for sub-categorization
+
+3. Group-level Configuration
+   - Group-level configuration can be set using a fluent API: `group.withConfig({ priority: 2, debounce: 300 })`
+   - Individual transition configurations override group-level configurations when both are specified
+   - Configuration options include:
+     - Priority levels for all transitions in the group
+     - Debounce settings for all transitions in the group
+     - Retry configuration for all transitions in the group
+   - Support for configuration inheritance between related groups
+   - Provide a method to get the effective configuration for a transition: `group.getEffectiveConfig('stateA', 'stateB')`
+   - Support for dynamic configuration that can change based on application state
+
+4. Group Enabling/Disabling
+   - Groups can be enabled or disabled using fluent methods: `group.enable()` and `group.disable()`
+   - The enabled state can be queried: `group.isEnabled()`
+   - When a group is disabled, none of its transitions are evaluated during auto-transition evaluation
+   - When a group is disabled, manual transitions within the group are still possible (unless explicitly prevented)
+   - Add an option to also prevent manual transitions when a group is disabled
+   - Enabling a previously disabled group immediately makes its transitions available for evaluation
+   - The API provides a fluent way to temporarily disable a group: `group.disableTemporarily(duration)`
+   - Provide a restoration callback for when a temporarily disabled group is re-enabled
+   - Support for conditionally enabled groups based on a predicate function
+
+5. Event Handling
+   - Groups can have event handlers attached using a fluent API:
+     - `group.onTransition((from, to) => { /* handler */ })`
+     - `group.onEnable(() => { /* handler */ })`
+     - `group.onDisable(() => { /* handler */ })`
+   - Event handlers receive relevant context about the event (states involved, transition configuration, etc.)
+   - Multiple handlers can be chained: `group.onTransition(handler1).onTransition(handler2)`
+   - Add support for removing event handlers: `group.offTransition(handler)`
+   - Add support for one-time event handlers: `group.onceTransition(handler)`
+   - Support for event bubbling between nested groups
+   - Add group-level middleware that can intercept and modify transitions
+
+6. Integration with Existing Features
+   - Transition groups work seamlessly with the existing transition history feature
+   - History entries include the group name for transitions that belong to a group
+   - Transition groups are compatible with the debugging and visualization tools
+   - Groups can be visualized as clusters in state machine diagrams
+   - Support for serialization and deserialization of group definitions
+   - Integration with the proposed logging system to provide group-specific logging
+
+7. Performance Considerations
+   - Adding transitions to groups does not significantly impact performance
+   - Enabling/disabling groups is an efficient operation
+   - The implementation optimizes for minimal overhead during transition evaluation
+   - Memory usage scales reasonably with the number of groups and transitions
+   - Provide a memory usage report method for groups: `fluentState.getGroupsMemoryUsage()`
+   - Support for lazy initialization of groups to improve startup performance
+   - Consider a compiled mode where group structures are optimized after definition
+   - Support batch operations for improved performance when manipulating multiple groups
+
+8. Nested Groups and Composition
+   - Support for defining groups within groups for hierarchical organization
+   - Child groups inherit configuration from parent groups unless overridden
+   - Enable/disable operations cascade to child groups
+   - Provide methods to navigate the group hierarchy: `group.parent()`, `group.children()`
+   - Support for composition patterns to reuse group definitions across state machines
+
+9. Testing and Debugging Support
+   - Provide snapshot capabilities for group state: `group.createSnapshot()`
+   - Support for mocking groups during testing
+   - Support for time-travel debugging with group state rollback
+   - Add group-specific debugging tools and visualizations
+   - Provide metrics on group transition frequency and performance
+
+Example Usage:
+```typescript
+// Create a group for user authentication flow with fluent API
+const authFlow = fluentState.createGroup('authentication')
+  .withConfig({
+    priority: 2,
+    retryConfig: {
+      maxAttempts: 3,
+      delay: 1000
+    }
+  });
+
+// Add transitions to the group with fluent syntax
+authFlow
+  .from('loggedOut').to('authenticating', {
+    condition: (_, context) => context.credentials !== null
+  })
+  .from('authenticating').to('loggedIn', {
+    condition: (_, context) => context.isAuthenticated
+  })
+  .or('error', {
+    condition: (_, context) => context.authError !== null
+  });
+
+// Add event handlers with fluent API
+authFlow
+  .onTransition((from, to) => console.log(`Auth transition: ${from} -> ${to}`))
+  .onEnable(() => console.log('Auth flow enabled'))
+  .onDisable(() => console.log('Auth flow disabled'));
+
+// Later, disable the entire authentication flow
+fluentState.group('authentication').disable();
+
+// Enable it again when needed
+fluentState.group('authentication').enable();
+
+// Temporarily disable for 5 minutes
+fluentState.group('authentication').disableTemporarily(5 * 60 * 1000);
+
+// Check if the group is currently enabled
+const isAuthFlowEnabled = fluentState.group('authentication').isEnabled();
+```
+
 ## 6. State Manager Performance Optimizations
 Dependencies: None
 
