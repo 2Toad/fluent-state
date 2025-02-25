@@ -15,6 +15,27 @@ Adds a state
 fluentState.from('vegetable');
 ```
 
+### configureStateManager(config: StateManagerConfig<unknown>): FluentState
+Configures the state manager with performance optimization options. This method is useful for configuring the default instance without creating a new FluentState instance.
+
+```JavaScript
+// Configure the state manager on the default instance
+fluentState.configureStateManager({
+  batchUpdates: true,
+  batchTimeWindow: 50,
+  enableMemoization: true
+});
+
+// With method chaining
+fluentState
+  .configureStateManager({
+    batchUpdates: true,
+    enableMemoization: true
+  })
+  .from('idle')
+  .to('running');
+```
+
 ### to(name: string, autoTransition?: AutoTransition): Transition
 Adds a transition to a state. Optionally accepts an auto-transition condition that, when true, will automatically trigger the transition.
 The condition receives the current state and a context object that can be used to evaluate the transition.

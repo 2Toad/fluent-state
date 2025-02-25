@@ -21,6 +21,8 @@ export interface FluentStateOptions {
   enableHistory?: boolean;
   /** Configuration options for the transition history */
   historyOptions?: TransitionHistoryOptions;
+  /** Configuration options for the state manager */
+  stateManagerConfig?: StateManagerConfig<unknown>;
 }
 
 export type BeforeTransitionHandler = (currentState: State, nextState: string) => boolean | Promise<boolean>;
@@ -146,6 +148,63 @@ export interface StateListener<T> {
 }
 
 /**
+ * Configuration options for optimizing state manager performance.
+ *
+ * @template T - The type of the state object.
+ */
+export interface StateManagerConfig<T> {
+  /** Whether to batch multiple rapid state updates */
+  batchUpdates?: boolean;
+  /** Time window in milliseconds for batching updates */
+  batchTimeWindow?: number;
+  /** Whether to memoize computed values from state */
+  enableMemoization?: boolean;
+  /** Custom equality function for state updates */
+  areEqual?: (prev: T, next: T) => boolean;
+  /** Performance metrics collection configuration */
+  metrics?: {
+    /** Whether to enable metrics collection */
+    enabled: boolean;
+    /** Whether to track update frequency and timing */
+    measureUpdates?: boolean;
+    /** Whether to track memory usage of state */
+    measureMemory?: boolean;
+    /** Whether to track computation time of state derivations */
+    measureComputations?: boolean;
+    /** Callback for metrics reporting */
+    onMetrics?: (metrics: StateManagerMetrics) => void;
+  };
+}
+
+/**
+ * Performance metrics collected by the state manager.
+ */
+export interface StateManagerMetrics {
+  /** Average time between updates in milliseconds */
+  updateFrequency: number;
+  /** Time spent processing updates in milliseconds */
+  updateDuration: number;
+  /** Number of updates in the current time window */
+  updateCount: number;
+  /** Memory usage statistics */
+  memoryUsage?: {
+    /** Approximate size of the state in bytes */
+    stateSize: number;
+    /** Approximate size of memoized values in bytes */
+    memoizedSize: number;
+  };
+  /** Computation timing in milliseconds */
+  computationDuration?: {
+    /** Time spent in equality checks */
+    equality: number;
+    /** Time spent in memoization */
+    memoization: number;
+    /** Time spent in derivations */
+    derivations: number;
+  };
+}
+
+/**
  * Interface for managing state transitions and listeners.
  *
  * @template T - The type of the state object.
@@ -154,4 +213,5 @@ export interface IStateManager<T> {
   getState(): T;
   setState(update: Partial<T>): void;
   subscribe(listener: StateListener<T>): () => void;
+  derive?<R>(key: string, deriveFn: (state: T) => R, dependencies?: string[]): R;
 }

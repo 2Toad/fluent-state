@@ -1,7 +1,16 @@
 import { State } from "./state";
 import { Event } from "./event";
 import { Observer } from "./observer";
-import { LifeCycleHandler, FluentStatePlugin, Lifecycle, TransitionError, StateError, FluentStateOptions, TransitionHistoryOptions } from "./types";
+import {
+  LifeCycleHandler,
+  FluentStatePlugin,
+  Lifecycle,
+  TransitionError,
+  StateError,
+  FluentStateOptions,
+  TransitionHistoryOptions,
+  StateManagerConfig,
+} from "./types";
 import { TransitionHistory } from "./transition-history";
 
 /**
@@ -24,6 +33,9 @@ export class FluentState {
   /** Whether transition history tracking is enabled */
   private historyEnabled: boolean;
 
+  /** Configuration for the state manager */
+  private stateManagerConfig?: StateManagerConfig<unknown>;
+
   /** Middleware functions that intercept transitions */
   private middlewares: ((prev: State | null, next: string, transition: () => void) => void | Promise<void>)[] = [];
 
@@ -34,6 +46,7 @@ export class FluentState {
    */
   constructor(options: FluentStateOptions = {}) {
     this.historyEnabled = options.enableHistory ?? false;
+    this.stateManagerConfig = options.stateManagerConfig;
 
     if (this.historyEnabled) {
       this.history = new TransitionHistory(options.historyOptions);
@@ -53,6 +66,17 @@ export class FluentState {
   enableHistory(options?: TransitionHistoryOptions): FluentState {
     this.historyEnabled = true;
     this.history = new TransitionHistory(options);
+    return this;
+  }
+
+  /**
+   * Configures the state manager with the provided options.
+   *
+   * @param config - The configuration for the state manager
+   * @returns The FluentState instance for chaining
+   */
+  configureStateManager(config: StateManagerConfig<unknown>): FluentState {
+    this.stateManagerConfig = config;
     return this;
   }
 
