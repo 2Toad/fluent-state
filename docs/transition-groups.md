@@ -267,17 +267,71 @@ Transition Groups can be enabled or disabled to control which transitions are ac
 // Disable a group
 group.disable();
 
+// Disable a group and prevent manual transitions as well
+group.disable({ preventManualTransitions: true });
+
 // Check if a group is enabled
 const isEnabled = group.isEnabled(); // false
 
-// Re-enable a group
+// Check if manual transitions are allowed
+const canTransition = group.allowsManualTransitions(); // false
+
+// Re-enable a group (also clears preventManualTransitions setting)
 group.enable();
 
 // Temporarily disable a group
 group.disableTemporarily(5000, () => {
   console.log("Group has been re-enabled after 5 seconds");
 });
+
+// Temporarily disable with prevention of manual transitions
+group.disableTemporarily(5000, undefined, { preventManualTransitions: true });
 ```
+
+Groups can also be conditionally enabled based on context data, using predicate functions:
+
+```typescript
+// Set a predicate that enables the group only for premium users
+group.setEnablePredicate((context) => context.userType === 'premium');
+
+// Check if the group is enabled in a specific context
+const appContext = { userType: 'regular' };
+const isPremiumEnabled = group.isEnabled(appContext); // false
+
+// Clear the predicate function
+group.clearEnablePredicate();
+```
+
+When using predicates and manual transitions, there are a few important behaviors to understand:
+
+```typescript
+// When a group is explicitly disabled but preventManualTransitions is false (default),
+// manual transitions are still allowed
+group.disable();
+const allowsManual1 = group.allowsManualTransitions(); // true
+
+// When a group is explicitly disabled and preventManualTransitions is true,
+// manual transitions are blocked
+group.disable({ preventManualTransitions: true });
+const allowsManual2 = group.allowsManualTransitions(); // false
+
+// When a group is disabled only because a predicate returns false,
+// manual transitions are still allowed
+group.enable(); // First enable the group
+group.setEnablePredicate((context) => context.isPremium);
+const context = { isPremium: false };
+const isEnabled = group.isEnabled(context); // false (disabled by predicate)
+const allowsManual3 = group.allowsManualTransitions(context); // true (manual transitions still allowed)
+```
+
+It's important to understand the difference between `isEnabled()` and `allowsManualTransitions()`:
+
+- `isEnabled(context)` checks both the explicit enabled flag AND evaluates the predicate function (if any)
+- `allowsManualTransitions(context)` only checks the preventManualTransitions flag when the group is explicitly disabled
+
+This means that even if a group would be disabled by a predicate for a given context (i.e., `isEnabled(context)` returns `false`), manual transitions are still allowed unless the group was explicitly disabled with `preventManualTransitions: true`.
+
+The predicate function is evaluated at runtime when checking if a group is enabled. This allows for dynamic, context-aware enabling and disabling of groups.
 
 ### 8. Automatic Cleanup
 

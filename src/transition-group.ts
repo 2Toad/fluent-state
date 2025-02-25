@@ -39,6 +39,12 @@ export class TransitionGroup {
   /** Whether this group is currently enabled */
   private enabled: boolean = true;
 
+  /** When disabled, whether to also prevent manual transitions */
+  private preventManualTransitions: boolean = false;
+
+  /** Optional predicate function to determine if the group is enabled based on context */
+  private enablePredicate?: (context: unknown) => boolean;
+
   /** Configuration for this group */
   private config: TransitionGroupConfig = {};
 
@@ -463,6 +469,7 @@ export class TransitionGroup {
    */
   enable(): TransitionGroup {
     this.enabled = true;
+    this.preventManualTransitions = false; // Reset when enabling
 
     // Clear any temporary disable timeout
     if (this.temporaryDisableTimeout) {
@@ -476,10 +483,16 @@ export class TransitionGroup {
   /**
    * Disables this group, preventing its transitions from being evaluated.
    *
+   * @param options - Optional settings for how the group is disabled
    * @returns This group instance for chaining
    */
-  disable(): TransitionGroup {
+  disable(options?: { preventManualTransitions?: boolean }): TransitionGroup {
     this.enabled = false;
+
+    // Set prevention of manual transitions if specified
+    if (options?.preventManualTransitions) {
+      this.preventManualTransitions = true;
+    }
 
     // Clear any temporary disable timeout
     if (this.temporaryDisableTimeout) {
@@ -495,10 +508,12 @@ export class TransitionGroup {
    *
    * @param duration - Duration in milliseconds to disable the group
    * @param callback - Optional callback to execute when the group is re-enabled
+   * @param options - Optional settings for how the group is disabled
    * @returns This group instance for chaining
    */
-  disableTemporarily(duration: number, callback?: () => void): TransitionGroup {
-    this.disable();
+  disableTemporarily(duration: number, callback?: () => void, options?: { preventManualTransitions?: boolean }): TransitionGroup {
+    // Call disable with the provided options
+    this.disable(options);
 
     this.temporaryDisableTimeout = setTimeout(() => {
       this.enable();
@@ -512,11 +527,74 @@ export class TransitionGroup {
 
   /**
    * Checks if this group is currently enabled.
+   * If a predicate function is set, it will be evaluated with the provided context.
    *
+   * @param context - Optional context for evaluating the enable predicate
    * @returns True if the group is enabled
    */
-  isEnabled(): boolean {
+  isEnabled(context?: unknown): boolean {
+    // If explicitly disabled, always return false
+    if (!this.enabled) {
+      return false;
+    }
+
+    // If predicate function exists and context is provided, evaluate it
+    if (this.enablePredicate && context !== undefined) {
+      return this.enablePredicate(context);
+    }
+
+    // Otherwise, use the explicit enabled state
     return this.enabled;
+  }
+
+  /**
+   * Check if manual transitions are allowed for this group.
+   * This method considers the following cases:
+   * 1. If the group is enabled (base flag and predicate if present), manual transitions are allowed
+   * 2. If the group is explicitly disabled with preventManualTransitions=true, manual transitions are blocked
+   * 3. If the group is disabled only due to a predicate returning false, manual transitions are still allowed
+   * 4. If the group is explicitly disabled but preventManualTransitions=false, manual transitions are allowed
+   *
+   * @param context - Optional context to evaluate the predicate
+   * @returns true if manual transitions are allowed, false otherwise
+   */
+  allowsManualTransitions(context?: unknown): boolean {
+    // If we're explicitly disabled, check the preventManualTransitions flag
+    if (!this.enabled) {
+      return !this.preventManualTransitions;
+    }
+
+    // Even if the predicate would disable the group with the given context,
+    // manual transitions are still allowed (this differs from isEnabled)
+    if (this.enablePredicate && context !== undefined) {
+      // We're only checking the predicate to be thorough, but we still return true
+      // since manual transitions are allowed even when disabled by a predicate
+      this.enablePredicate(context);
+    }
+
+    return true;
+  }
+
+  /**
+   * Sets a predicate function that dynamically determines if the group is enabled
+   * based on the provided context at runtime.
+   *
+   * @param predicate - Function that returns true if the group should be enabled
+   * @returns This group instance for chaining
+   */
+  setEnablePredicate(predicate: (context: unknown) => boolean): TransitionGroup {
+    this.enablePredicate = predicate;
+    return this;
+  }
+
+  /**
+   * Clears any previously set enable predicate, reverting to the explicit enabled state.
+   *
+   * @returns This group instance for chaining
+   */
+  clearEnablePredicate(): TransitionGroup {
+    this.enablePredicate = undefined;
+    return this;
   }
 
   /**
@@ -572,6 +650,7 @@ export class TransitionGroup {
       name: this.name,
       namespace: this.namespace,
       enabled: this.enabled,
+      preventManualTransitions: this.preventManualTransitions,
       config: serializableConfig,
       transitions: serializedTransitions,
       parentGroup: this.parentGroup ? this.parentGroup.getFullName() : undefined,
@@ -592,6 +671,7 @@ export class TransitionGroup {
   ): TransitionGroup {
     // Apply basic group properties
     this.enabled = serialized.enabled;
+    this.preventManualTransitions = serialized.preventManualTransitions || false;
     this.config = { ...serialized.config };
 
     // Add all transitions

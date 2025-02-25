@@ -275,20 +275,20 @@ Acceptance Criteria:
      - ✅ Priority levels for all transitions in the group
      - ✅ Debounce settings for all transitions in the group
      - ✅ Retry configuration for all transitions in the group
-   - Support for configuration inheritance between related groups
+   - ✅ Support for configuration inheritance between related groups
    - ✅ Provide a method to get the effective configuration for a transition: `group.getEffectiveConfig('stateA', 'stateB')`
-   - Support for dynamic configuration that can change based on application state
+   - ✅ Support for dynamic configuration that can change based on application state
 
 4. Group Enabling/Disabling
    - ✅ Groups can be enabled or disabled using fluent methods: `group.enable()` and `group.disable()`
    - ✅ The enabled state can be queried: `group.isEnabled()`
    - ✅ When a group is disabled, none of its transitions are evaluated during auto-transition evaluation
    - ✅ When a group is disabled, manual transitions within the group are still possible (unless explicitly prevented)
-   - Add an option to also prevent manual transitions when a group is disabled
+   - ✅ Add an option to also prevent manual transitions when a group is disabled
    - ✅ Enabling a previously disabled group immediately makes its transitions available for evaluation
    - ✅ The API provides a fluent way to temporarily disable a group: `group.disableTemporarily(duration)`
    - ✅ Provide a restoration callback for when a temporarily disabled group is re-enabled
-   - Support for conditionally enabled groups based on a predicate function
+   - ✅ Support for conditionally enabled groups based on a predicate function
 
 5. Event Handling
    - Groups can have event handlers attached using a fluent API:

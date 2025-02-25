@@ -175,7 +175,33 @@ export class FluentState {
     }
 
     const currentState = this.state;
+
+    // If there is no current state, return false instead of throwing an error
+    if (!currentState) {
+      return false;
+    }
+
     const nextStateName = names.length === 1 ? names[0] : names[Math.floor(Math.random() * names.length)];
+
+    // This will ensure we can pass the current context to the group evaluations
+    const currentContext = currentState.getContext();
+
+    // Check if this transition is allowed by all groups that contain it
+    const groupsContainingTransition = Array.from(this.groups.values()).filter((group) => group.hasTransition(currentState.name, nextStateName));
+
+    // If any groups contain this transition, check if any block manual transitions
+    if (groupsContainingTransition.length > 0) {
+      // Pass the context when checking if manual transitions are allowed
+      const anyGroupBlocksTransition = groupsContainingTransition.some((group) => !group.allowsManualTransitions(currentContext));
+
+      if (anyGroupBlocksTransition) {
+        // Record failed transition due to blocked manual transition
+        if (this.historyEnabled && this.history) {
+          this.history.recordTransition(currentState, nextStateName, currentContext, false);
+        }
+        return false;
+      }
+    }
 
     if (!(await this._runMiddlewares(currentState, nextStateName))) {
       // Record failed transition due to middleware blocking

@@ -224,6 +224,7 @@ export interface SerializedTransitionGroup {
   name: string;
   namespace?: string;
   enabled: boolean;
+  preventManualTransitions?: boolean;
   config: {
     priority?: number;
     debounce?: number;
