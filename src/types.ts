@@ -106,6 +106,8 @@ export interface TransitionHistoryEntry {
   context: unknown;
   /** Whether the transition was successful */
   success: boolean;
+  /** The name of the group this transition belongs to (if any) */
+  groupName?: string;
 }
 
 /**

@@ -154,7 +154,12 @@ export class FluentState {
 
       // Record the initial state as a transition from null
       if (this.historyEnabled && this.history) {
-        this.history.recordTransition(null, this.state.name, this.state.getContext(), true);
+        const initialStateName = this.state.name;
+        const groupWithInitialState = Array.from(this.groups.values()).find((group) =>
+          group.getAllTransitions().some(([, to]) => to === initialStateName),
+        );
+
+        this.history.recordTransition(null, this.state.name, this.state.getContext(), true, groupWithInitialState?.getFullName());
       }
     }
     return this;
@@ -192,7 +197,7 @@ export class FluentState {
         if (!group.allowsManualTransitions(context)) {
           // Record the failed transition
           if (this.historyEnabled && this.history) {
-            this.history.recordTransition(currentState, targetState, context, false);
+            this.history.recordTransition(currentState, targetState, context, false, group.getFullName());
           }
           return false;
         }
@@ -221,14 +226,18 @@ export class FluentState {
         if (!(await group._runMiddleware(fromState, targetState, context))) {
           // Group middleware blocked the transition
           if (this.historyEnabled && this.history) {
-            this.history.recordTransition(currentState, targetState, context, false);
+            this.history.recordTransition(currentState, targetState, context, false, group.getFullName());
           }
           return false;
         }
       }
 
       // Execute the transition with all lifecycle events
-      const result = await this._executeTransition(currentState, toState!);
+      const result = await this._executeTransition(
+        currentState,
+        toState!,
+        groupsWithTransition.length > 0 ? groupsWithTransition[0].getFullName() : undefined,
+      );
 
       // If successful, trigger transition handlers for groups
       if (result) {
@@ -242,7 +251,9 @@ export class FluentState {
     } else {
       // Record the failed transition
       if (this.historyEnabled && this.history) {
-        this.history.recordTransition(currentState, targetState, context, false);
+        // Find if this transition belongs to any group
+        const groupWithTransition = Array.from(this.groups.values()).find((group) => group.hasTransition(fromState, targetState));
+        this.history.recordTransition(currentState, targetState, context, false, groupWithTransition?.getFullName());
       }
       return false;
     }
@@ -420,9 +431,10 @@ export class FluentState {
    *
    * @param currentState - The current state of the state machine.
    * @param nextState - The next state to transition to.
+   * @param groupName - The name of the group associated with the transition
    * @returns True if the transition was successful, false otherwise.
    */
-  private async _executeTransition(currentState: State, nextState: State): Promise<boolean> {
+  private async _executeTransition(currentState: State, nextState: State, groupName?: string): Promise<boolean> {
     // Get the context before transition for history recording
     const contextBeforeTransition = currentState.getContext();
 
@@ -432,7 +444,7 @@ export class FluentState {
     if (results.includes(false)) {
       // Record failed transition due to BeforeTransition hook returning false
       if (this.historyEnabled && this.history) {
-        this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, false);
+        this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, false, groupName);
       }
       return false;
     }
@@ -444,7 +456,7 @@ export class FluentState {
 
       // Record failed transition due to invalid transition
       if (this.historyEnabled && this.history) {
-        this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, false);
+        this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, false, groupName);
       }
       return false;
     }
@@ -469,7 +481,7 @@ export class FluentState {
 
     // Record successful transition
     if (this.historyEnabled && this.history) {
-      this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, true);
+      this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, true, groupName);
     }
 
     return true;

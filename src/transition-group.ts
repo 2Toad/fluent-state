@@ -1,4 +1,4 @@
-import { AutoTransitionConfig, SerializedTransitionGroup } from "./types";
+import { AutoTransitionConfig, SerializedTransitionGroup, TransitionHistoryEntry } from "./types";
 import { FluentState } from "./fluent-state";
 
 // Define event handler types
@@ -1086,6 +1086,36 @@ export class TransitionGroup {
       }
     }
     return true;
+  }
+
+  /**
+   * Gets all transitions in this group.
+   *
+   * @returns An array of [fromState, toState] pairs representing all transitions in this group
+   */
+  getAllTransitions(): Array<[string, string]> {
+    const result: Array<[string, string]> = [];
+
+    for (const [fromState, toStates] of this.transitions.entries()) {
+      for (const toState of toStates.keys()) {
+        result.push([fromState, toState]);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Gets the history of transitions for this group.
+   *
+   * @returns An array of transition history entries for this group, or null if history is not enabled
+   */
+  getTransitionHistory(): TransitionHistoryEntry[] | null {
+    if (!this.fluentState.history) {
+      return null;
+    }
+
+    return this.fluentState.history.getTransitionsForGroup(this.getFullName());
   }
 }
 

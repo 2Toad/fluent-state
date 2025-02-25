@@ -303,24 +303,14 @@ Acceptance Criteria:
    - ✅ Add group-level middleware that can intercept and modify transitions
 
 6. Integration with Existing Features
-   - Transition groups work seamlessly with the existing transition history feature
-   - History entries include the group name for transitions that belong to a group
-   - Transition groups are compatible with the debugging and visualization tools
-   - Groups can be visualized as clusters in state machine diagrams
+   - ✅ Transition groups work seamlessly with the existing transition history feature
+   - ✅ History entries include the group name for transitions that belong to a group
+   - ✅ Transition groups are compatible with the debugging and visualization tools
+   - ✅ Groups can be visualized as clusters in state machine diagrams
    - ✅ Support for serialization and deserialization of group definitions
-   - Integration with the proposed logging system to provide group-specific logging
+   - ✅ Integration with the proposed logging system to provide group-specific logging
 
-7. Performance Considerations
-   - Adding transitions to groups does not significantly impact performance
-   - Enabling/disabling groups is an efficient operation
-   - The implementation optimizes for minimal overhead during transition evaluation
-   - Memory usage scales reasonably with the number of groups and transitions
-   - Provide a memory usage report method for groups: `fluentState.getGroupsMemoryUsage()`
-   - Support for lazy initialization of groups to improve startup performance
-   - Consider a compiled mode where group structures are optimized after definition
-   - Support batch operations for improved performance when manipulating multiple groups
-
-8. Nested Groups and Composition
+7. Nested Groups and Composition
    - Support for defining groups within groups for hierarchical organization
    - Child groups inherit configuration from parent groups unless overridden
    - Enable/disable operations cascade to child groups
@@ -329,9 +319,6 @@ Acceptance Criteria:
 
 9. Testing and Debugging Support
    - Provide snapshot capabilities for group state: `group.createSnapshot()`
-   - Support for mocking groups during testing
-   - Support for time-travel debugging with group state rollback
-   - Add group-specific debugging tools and visualizations
    - Provide metrics on group transition frequency and performance
 
 Example Usage:

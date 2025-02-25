@@ -1248,4 +1248,250 @@ describe("Transition Groups", () => {
       expect(serialized.config.retryConfig?.delay).to.be.undefined;
     });
   });
+
+  describe("Integration with Transition History", () => {
+    let fs: FluentState;
+
+    beforeEach(() => {
+      fs = new FluentState({
+        initialState: "idle",
+        enableHistory: true,
+      });
+    });
+
+    it("should record group name in transition history", async () => {
+      // Create a group
+      const authGroup = fs.createGroup("auth");
+
+      // Add transitions to the group
+      authGroup.from("idle").to("authenticating", {
+        condition: () => true,
+        targetState: "authenticating",
+      });
+
+      authGroup.from("authenticating").to("authenticated", {
+        condition: () => true,
+        targetState: "authenticated",
+      });
+
+      // Start the state machine
+      await fs.start();
+
+      // Perform transitions
+      await fs.transition("authenticating");
+      await fs.transition("authenticated");
+
+      // Verify group name is recorded in history
+      const history = fs.history!.getAll();
+      expect(history.length).to.be.at.least(3); // Initial + 2 transitions
+
+      // Check the most recent transition
+      const lastTransition = fs.history!.getLastTransition();
+      expect(lastTransition).to.exist;
+      expect(lastTransition!.from).to.equal("authenticating");
+      expect(lastTransition!.to).to.equal("authenticated");
+      expect(lastTransition!.groupName).to.equal("auth");
+    });
+
+    it("should record group name for failed transitions", async () => {
+      // Create a group
+      const authGroup = fs.createGroup("auth");
+
+      // Add transitions to the group
+      authGroup.from("idle").to("authenticating", {
+        condition: () => true,
+        targetState: "authenticating",
+      });
+
+      // Disable the group
+      authGroup.disable({ preventManualTransitions: true });
+
+      // Start the state machine
+      await fs.start();
+
+      // Attempt a transition that will fail due to disabled group
+      await fs.transition("authenticating");
+
+      // Verify group name is recorded in history for failed transition
+      const lastTransition = fs.history!.getLastTransition();
+      expect(lastTransition).to.exist;
+      expect(lastTransition!.from).to.equal("idle");
+      expect(lastTransition!.to).to.equal("authenticating");
+      expect(lastTransition!.success).to.equal(false);
+      expect(lastTransition!.groupName).to.equal("auth");
+    });
+
+    it("should get transitions for a specific group", async () => {
+      // Create two groups
+      const authGroup = fs.createGroup("auth");
+      const dataGroup = fs.createGroup("data");
+
+      // Add transitions to the auth group
+      authGroup.from("idle").to("authenticating", {
+        condition: () => true,
+        targetState: "authenticating",
+      });
+
+      authGroup.from("authenticating").to("authenticated", {
+        condition: () => true,
+        targetState: "authenticated",
+      });
+
+      // Add transitions to the data group
+      dataGroup.from("authenticated").to("loading", {
+        condition: () => true,
+        targetState: "loading",
+      });
+
+      dataGroup.from("loading").to("loaded", {
+        condition: () => true,
+        targetState: "loaded",
+      });
+
+      // Start the state machine
+      await fs.start();
+
+      // Perform transitions
+      await fs.transition("authenticating");
+      await fs.transition("authenticated");
+      await fs.transition("loading");
+      await fs.transition("loaded");
+
+      // Get transitions for auth group
+      const authTransitions = fs.history!.getTransitionsForGroup("auth");
+      expect(authTransitions.length).to.equal(2);
+      expect(authTransitions[0].from).to.equal("authenticating");
+      expect(authTransitions[0].to).to.equal("authenticated");
+      expect(authTransitions[1].from).to.equal("idle");
+      expect(authTransitions[1].to).to.equal("authenticating");
+
+      // Get transitions for data group
+      const dataTransitions = fs.history!.getTransitionsForGroup("data");
+      expect(dataTransitions.length).to.equal(2);
+      expect(dataTransitions[0].from).to.equal("loading");
+      expect(dataTransitions[0].to).to.equal("loaded");
+      expect(dataTransitions[1].from).to.equal("authenticated");
+      expect(dataTransitions[1].to).to.equal("loading");
+    });
+
+    it("should record initial state with group name if it belongs to a group", async () => {
+      // Create a group with a transition to the initial state
+      const group = fs.createGroup("workflow");
+
+      // Add a transition that targets the initial state
+      group.from("start").to("idle", {
+        condition: () => true,
+        targetState: "idle",
+      });
+
+      // Start the state machine
+      await fs.start();
+
+      // Verify initial state is recorded with group name
+      const initialTransition = fs.history!.getLastTransition();
+      expect(initialTransition).to.exist;
+      expect(initialTransition!.from).to.equal("null");
+      expect(initialTransition!.to).to.equal("idle");
+      expect(initialTransition!.success).to.equal(true);
+      expect(initialTransition!.groupName).to.equal("workflow");
+    });
+  });
+
+  describe("Group Transition Methods", () => {
+    let fs: FluentState;
+
+    beforeEach(() => {
+      fs = new FluentState({
+        initialState: "idle",
+      });
+    });
+
+    it("should get all transitions in a group", () => {
+      // Create a group
+      const group = fs.createGroup("test");
+
+      // Add transitions to the group
+      group.from("idle").to("running");
+      group.from("running").to("paused");
+      group.from("paused").to("running");
+      group.from("running").to("stopped");
+
+      // Get all transitions
+      const transitions = group.getAllTransitions();
+
+      // Verify transitions
+      expect(transitions.length).to.equal(4);
+      expect(transitions).to.deep.include(["idle", "running"]);
+      expect(transitions).to.deep.include(["running", "paused"]);
+      expect(transitions).to.deep.include(["paused", "running"]);
+      expect(transitions).to.deep.include(["running", "stopped"]);
+    });
+
+    it("should return an empty array for a group with no transitions", () => {
+      // Create a group
+      const group = fs.createGroup("empty");
+
+      // Get all transitions
+      const transitions = group.getAllTransitions();
+
+      // Verify transitions
+      expect(transitions.length).to.equal(0);
+    });
+
+    it("should get transition history for a group", async () => {
+      // Create a state machine with history enabled
+      fs = new FluentState({
+        initialState: "idle",
+        enableHistory: true,
+      });
+
+      // Create a group
+      const group = fs.createGroup("test");
+
+      // Add transitions to the group
+      group.from("idle").to("running", {
+        condition: () => true,
+        targetState: "running",
+      });
+
+      group.from("running").to("paused", {
+        condition: () => true,
+        targetState: "paused",
+      });
+
+      // Start the state machine
+      await fs.start();
+
+      // Perform transitions
+      await fs.transition("running");
+      await fs.transition("paused");
+
+      // Get transition history for the group
+      const history = group.getTransitionHistory();
+
+      // Verify history
+      expect(history).to.exist;
+      expect(history!.length).to.equal(2);
+      expect(history![0].from).to.equal("running");
+      expect(history![0].to).to.equal("paused");
+      expect(history![1].from).to.equal("idle");
+      expect(history![1].to).to.equal("running");
+    });
+
+    it("should return null for getTransitionHistory when history is not enabled", () => {
+      // Create a state machine without history enabled
+      fs = new FluentState({
+        initialState: "idle",
+      });
+
+      // Create a group
+      const group = fs.createGroup("test");
+
+      // Get transition history for the group
+      const history = group.getTransitionHistory();
+
+      // Verify history is null
+      expect(history).to.be.null;
+    });
+  });
 });

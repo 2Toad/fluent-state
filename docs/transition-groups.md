@@ -676,6 +676,97 @@ fluentState.importGroups(
 
 Note that since functions can't be serialized, you need to provide condition functions separately when deserializing.
 
+### 12. Integration with Transition History
+
+Transition Groups are fully integrated with FluentState's transition history feature, allowing you to track and analyze transitions by group:
+
+```typescript
+// Create a state machine with history enabled
+const fs = new FluentState({
+  initialState: "idle",
+  enableHistory: true
+});
+
+// Create a group
+const authGroup = fs.createGroup("auth");
+
+// Add transitions to the group
+authGroup
+  .from("idle")
+  .to("authenticating", {
+    condition: (_, context) => context.credentials !== null,
+    targetState: "authenticating"
+  })
+  .from("authenticating")
+  .to("authenticated", {
+    condition: (_, context) => context.isAuthenticated,
+    targetState: "authenticated"
+  })
+  .or("error", {
+    condition: (_, context) => context.authError !== null,
+    targetState: "error"
+  });
+
+// Start the state machine
+await fs.start();
+
+// Perform transitions
+await fs.transition("authenticating", { credentials: { username: "user", password: "pass" } });
+await fs.transition("authenticated", { isAuthenticated: true });
+
+// Get all transitions in the group
+const allTransitions = authGroup.getAllTransitions();
+// Returns: [["idle", "authenticating"], ["authenticating", "authenticated"], ["authenticating", "error"]]
+
+// Get transition history for this group
+const groupHistory = authGroup.getTransitionHistory();
+// Returns an array of transition history entries for this group
+```
+
+#### History Features
+
+When transition history is enabled, the following features are available:
+
+1. **Group Name in History**: All transition history entries include the group name for transitions that belong to a group
+2. **Group-Specific History**: Use `getTransitionHistory()` on a group to get only transitions that occurred within that group
+3. **Query by Group**: Use `history.getTransitionsForGroup(groupName)` to query transitions by group name
+4. **Initial State Tracking**: If the initial state belongs to a group, it's recorded with the group name in history
+
+These features enable powerful debugging, visualization, and analysis capabilities:
+
+```typescript
+// Get all transitions for a specific group
+const authTransitions = fs.history.getTransitionsForGroup("auth");
+
+// Analyze transition patterns
+const successfulTransitions = authTransitions.filter(t => t.success);
+const failedTransitions = authTransitions.filter(t => !t.success);
+
+// Track transition timing
+const transitionTimes = authTransitions.map(t => t.timestamp);
+const averageTransitionTime = calculateAverageTimeBetween(transitionTimes);
+
+// Visualize group transitions
+const visualization = createTransitionGraph(authTransitions);
+```
+
+#### Implementation Details
+
+The integration with transition history works by:
+
+1. Recording the group name when transitions occur
+2. Providing methods to query and analyze transitions by group
+3. Including group information in serialized history data
+
+This integration is particularly useful for:
+
+- Debugging complex state flows
+- Analyzing user journeys through your application
+- Identifying bottlenecks or issues in specific workflows
+- Creating visualizations of state machine behavior
+
+When a transition belongs to multiple groups, the first matching group is recorded in the history entry.
+
 ## Advanced Patterns
 
 ### Workflow Organization
@@ -863,3 +954,79 @@ This example demonstrates:
 - Using tags to categorize transitions within groups
 - Calculating effective configuration that combines static and dynamic values
 - Runtime evaluation of configuration based on system context 
+
+## API Reference
+
+### Group Methods
+
+#### Creation and Configuration
+
+- `fluentState.createGroup(name: string, parentGroup?: string | TransitionGroup): TransitionGroup` - Creates a new transition group
+- `group.withConfig(config: TransitionGroupConfig): TransitionGroup` - Sets configuration for the group
+- `group.setParent(parentGroup: TransitionGroup): TransitionGroup` - Sets the parent group for inheritance
+- `group.createChildGroup(name: string): TransitionGroup` - Creates a child group that inherits from this group
+
+#### Transition Management
+
+- `group.from(fromState: string): TransitionBuilder` - Starts defining transitions from a state
+- `group.addTransition(fromState: string, toState: string, config?: AutoTransitionConfig, tags?: string[]): TransitionGroup` - Adds a transition to the group
+- `group.removeTransition(fromState: string, toState: string): TransitionGroup` - Removes a transition from the group
+- `group.hasTransition(fromState: string, toState: string): boolean` - Checks if a transition exists in the group
+- `group.getEffectiveConfig(fromState: string, toState: string, context?: unknown): AutoTransitionConfig | undefined` - Gets the effective configuration for a transition
+
+#### Transition Queries and History
+
+- `group.getAllTransitions(): Array<[string, string]>` - Gets all transitions in this group as [fromState, toState] pairs
+- `group.getTransitionHistory(): TransitionHistoryEntry[] | null` - Gets the history of transitions for this group (requires history to be enabled)
+- `group.getTransitionsByTag(tag: string): Array<[string, string]>` - Gets transitions with a specific tag
+
+#### Tagging
+
+- `group.addTagsToTransition(fromState: string, toState: string, tags: string[]): TransitionGroup` - Adds tags to a transition
+- `group.removeTagFromTransition(fromState: string, toState: string, tag: string): TransitionGroup` - Removes a tag from a transition
+- `group.getTagsForTransition(fromState: string, toState: string): string[]` - Gets all tags for a transition
+
+#### Enabling and Disabling
+
+- `group.enable(): TransitionGroup` - Enables the group
+- `group.disable(options?: { preventManualTransitions?: boolean }): TransitionGroup` - Disables the group
+- `group.disableTemporarily(duration: number, callback?: () => void, options?: { preventManualTransitions?: boolean }): TransitionGroup` - Temporarily disables the group
+- `group.isEnabled(context?: unknown): boolean` - Checks if the group is enabled
+- `group.allowsManualTransitions(context?: unknown): boolean` - Checks if manual transitions are allowed
+- `group.setEnablePredicate(predicate: (context: unknown) => boolean): TransitionGroup` - Sets a predicate function for conditional enabling
+- `group.clearEnablePredicate(): TransitionGroup` - Clears the enable predicate function
+
+#### Event Handling
+
+- `group.onTransition(handler: TransitionHandler): TransitionGroup` - Adds a transition event handler
+- `group.onceTransition(handler: TransitionHandler): TransitionGroup` - Adds a one-time transition event handler
+- `group.offTransition(handler: TransitionHandler): TransitionGroup` - Removes a transition event handler
+- `group.onEnable(handler: EnableHandler): TransitionGroup` - Adds an enable event handler
+- `group.onceEnable(handler: EnableHandler): TransitionGroup` - Adds a one-time enable event handler
+- `group.offEnable(handler: EnableHandler): TransitionGroup` - Removes an enable event handler
+- `group.onDisable(handler: DisableHandler): TransitionGroup` - Adds a disable event handler
+- `group.onceDisable(handler: DisableHandler): TransitionGroup` - Adds a one-time disable event handler
+- `group.offDisable(handler: DisableHandler): TransitionGroup` - Removes a disable event handler
+
+#### Middleware
+
+- `group.middleware(middleware: GroupTransitionMiddleware): TransitionGroup` - Adds middleware to intercept transitions
+- `group.removeMiddleware(middleware: GroupTransitionMiddleware): TransitionGroup` - Removes middleware
+
+#### Serialization
+
+- `group.serialize(): SerializedTransitionGroup` - Serializes the group to a plain object
+- `group.deserialize(serialized: SerializedTransitionGroup, conditionMap?: Record<string, Record<string, AutoTransitionConfig["condition"]>>): TransitionGroup` - Deserializes a group from a plain object
+
+### FluentState Methods for Groups
+
+- `fluentState.group(name: string): TransitionGroup | null` - Gets a group by name
+- `fluentState.removeGroup(name: string): boolean` - Removes a group
+- `fluentState.getAllGroups(): TransitionGroup[]` - Gets all groups
+- `fluentState.createGroupFromConfig(serialized: SerializedTransitionGroup, conditionMap?: Record<string, Record<string, AutoTransitionConfig["condition"]>>): TransitionGroup` - Creates a group from serialized configuration
+- `fluentState.exportGroups(): SerializedTransitionGroup[]` - Exports all groups as serialized configurations
+- `fluentState.importGroups(groups: SerializedTransitionGroup[], conditionMaps?: Record<string, Record<string, Record<string, AutoTransitionConfig["condition"]>>>, options?: { skipExisting?: boolean; replaceExisting?: boolean }): FluentState` - Imports groups from serialized configurations
+
+### TransitionHistory Methods for Groups
+
+- `history.getTransitionsForGroup(groupName: string): TransitionHistoryEntry[]` - Gets all transitions belonging to a specific group 
