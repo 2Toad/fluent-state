@@ -53,33 +53,63 @@ Adds a state
 fluentState.from('vegetable');
 ```
 
-#### to(name: string, autoTransition?: (state: State) => boolean | Promise<boolean>): Transition
+#### to(name: string, autoTransition?: AutoTransition): Transition
 Adds a transition to a state. Optionally accepts an auto-transition condition that, when true, will automatically trigger the transition.
+The condition receives the current state and a context object that can be used to evaluate the transition.
 
 ```JavaScript
+// Simple auto-transition
 fluentState
-  .from('vegetable') // Add the 'vegetable' state
-  .to('diced');      // add the 'diced' state, with a transtion from 'vegetable'
+  .from('vegetable')
+  .to('diced');      // add the 'diced' state, with a transition from 'vegetable'
 
 // With auto-transition
 fluentState
   .from('vegetable')
-  .to('trash',       
-    (state) => state.quality < 0 // automatically transition to 'trash' when quality is below 0
+  .to<AppState>('trash',       
+    (state, context) => context.quality < 0 // automatically transition to 'trash' when quality is below 0
   );
 
-// Async auto-transitions are supported
+// Multiple conditions using context
+fluentState
+  .from('vegetable')
+  .to<AppState>('trash',
+    (state, context) => context.quality < 0 && context.expired === true
+  );
+
+// Evaluate transitions when your state changes
+const myState = { quality: -1, expired: true };
+await fluentState.state.evaluateAutoTransitions(myState);
+
+// Works with any state management solution:
+
+// Redux example:
+store.subscribe(() => {
+  fluentState.state.evaluateAutoTransitions(store.getState());
+});
+
+// MobX example:
+autorun(() => {
+  fluentState.state.evaluateAutoTransitions(myObservableState);
+});
+
+// Vue example:
+watch(() => state.value, (newState) => {
+  fluentState.state.evaluateAutoTransitions(newState);
+});
+
+// Async conditions are supported
 fluentState
   .from('order')
-  .to('shipped',
-    async (state) => {
-      const status = await checkShipmentStatus(state.orderId);
+  .to<AppState>('shipped',
+    async (state, context) => {
+      const status = await checkShipmentStatus(context.orderId);
       return status === 'shipped';
     }
   );
 ```
 
-#### or(name: string, autoTransition?: (state: State) => boolean | Promise<boolean>): Transition
+#### or(name: string, autoTransition?: AutoTransition): Transition
 Adds an alternate transition to a state. Optionally accepts an auto-transition condition that, when true, will automatically trigger the transition.
 
 ```JavaScript

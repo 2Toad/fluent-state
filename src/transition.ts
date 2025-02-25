@@ -1,5 +1,5 @@
 import { State } from "./state";
-import { AutoTransitionCondition } from "./types";
+import { AutoTransition } from "./types";
 
 /**
  * Represents a transition between states in the state machine.
@@ -36,7 +36,7 @@ export class Transition {
    * @param autoTransition - Optional condition for automatic transition to this state.
    * @returns A new Transition object representing this alternative path.
    */
-  or(name: string, autoTransition?: AutoTransitionCondition): Transition {
+  or<TContext>(name: string, autoTransition?: AutoTransition<TContext>): Transition {
     return this.state.to(name, autoTransition);
   }
 }

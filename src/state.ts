@@ -1,11 +1,7 @@
 import { FluentState } from "./fluent-state";
 import { Transition } from "./transition";
-import { EventHandler, EnterEventHandler, ExitEventHandler, AutoTransitionCondition } from "./types";
-
-interface AutoTransitionConfig {
-  condition: AutoTransitionCondition;
-  targetState: string;
-}
+import { EventHandler, EnterEventHandler, ExitEventHandler, AutoTransitionConfig, AutoTransition } from "./types";
+import { IStateManager, StateManager } from "./state-manager";
 
 /**
  * Represents a distinct state in the state machine.
@@ -34,9 +30,19 @@ export class State {
   /** Configuration for automatic transitions based on conditions */
   private autoTransitions: AutoTransitionConfig[] = [];
 
+  /** State manager for handling context updates */
+  private stateManager: IStateManager<unknown>;
+
+  /** Cleanup function for state manager subscription */
+  private unsubscribe?: () => void;
+
   constructor(name: string, fluentState: FluentState) {
     this.fluentState = fluentState;
     this.name = name;
+    this.stateManager = new StateManager({});
+    this.unsubscribe = this.stateManager.subscribe(async (context) => {
+      await this.evaluateAutoTransitions(context);
+    });
   }
 
   /**
@@ -47,13 +53,87 @@ export class State {
    * @param autoTransition - Optional condition that, when true, will automatically trigger this transition.
    * @returns A Transition object that can be used to chain additional state configurations.
    */
-  to(name: string, autoTransition?: AutoTransitionCondition): Transition {
+  to<TContext>(name: string, autoTransition?: AutoTransition<TContext>): Transition {
     this.fluentState._addState(name);
     if (autoTransition) {
-      this.autoTransitions.push({ condition: autoTransition, targetState: name });
+      this.autoTransitions.push({
+        condition: autoTransition,
+        targetState: name,
+      });
     }
 
     return this._addTransition(name);
+  }
+
+  /**
+   * Sets a custom state manager to handle context updates.
+   * This allows users to integrate their own state management solution.
+   *
+   * @param stateManager - The custom state manager to use
+   */
+  setStateManager<T>(stateManager: IStateManager<T>): void {
+    // Clean up existing subscription if any
+    if (this.unsubscribe) {
+      this.unsubscribe();
+    }
+
+    this.stateManager = stateManager;
+    this.unsubscribe = stateManager.subscribe(async (context) => {
+      await this.evaluateAutoTransitions(context);
+    });
+  }
+
+  /**
+   * Updates the context in the state manager.
+   * This will trigger evaluation of auto-transitions.
+   *
+   * @param update - Partial update to apply to the context
+   */
+  updateContext<T>(update: Partial<T>): void {
+    const currentState = this.stateManager.getState() as T;
+    this.stateManager.setState({ ...currentState, ...update });
+  }
+
+  /**
+   * Gets the current context from the state manager.
+   */
+  getContext<T>(): T {
+    return this.stateManager.getState() as T;
+  }
+
+  /**
+   * Evaluates all auto-transitions with the given context.
+   * This is called automatically when the context is updated,
+   * but can also be called manually if needed.
+   *
+   * @param context - The context to evaluate transitions against
+   * @returns true if a transition occurred
+   */
+  async evaluateAutoTransitions<TContext = unknown>(context: TContext): Promise<boolean> {
+    for (const autoTransition of this.autoTransitions) {
+      const transitioned = await this.evaluateAutoTransition(autoTransition, context);
+      if (transitioned) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Evaluates a single auto-transition configuration
+   * @returns true if transition occurred, false otherwise
+   */
+  private async evaluateAutoTransition<TContext>(config: AutoTransitionConfig<TContext>, context: TContext): Promise<boolean> {
+    try {
+      const shouldTransition = await config.condition(this, context);
+      if (shouldTransition) {
+        await this.fluentState.transition(config.targetState).catch((error) => {
+          console.error("Auto-transition failed:", error);
+        });
+        return true;
+      }
+    } catch (error) {
+      console.error("Error in auto-transition condition", error);
+    }
+    return false;
   }
 
   /**
@@ -105,20 +185,8 @@ export class State {
     // First execute normal enter handlers
     await Promise.all(this.enterEventHandlers.map((handler) => handler(previousState, this)));
 
-    // Then check auto-transitions
-    for (const autoTransition of this.autoTransitions) {
-      try {
-        const shouldTransition = await autoTransition.condition(this);
-        if (shouldTransition) {
-          await this.fluentState.transition(autoTransition.targetState).catch((error) => {
-            console.error("Auto-transition failed:", error);
-          });
-          break; // First matching condition wins
-        }
-      } catch (error) {
-        console.error("Error in auto-transition condition", error);
-      }
-    }
+    // Then check auto-transitions with empty context
+    await this.evaluateAutoTransitions({});
   }
 
   /**

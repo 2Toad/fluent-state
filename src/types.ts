@@ -7,24 +7,28 @@ export type AfterTransitionHandler = (previousState: State, currentState: State)
 
 export type LifeCycleHandler = BeforeTransitionHandler | FailedTransitionHandler | AfterTransitionHandler;
 
-export type EventHandler = (previousState: State, currentState: State) => void | Promise<void> | undefined;
+/** Handler for state-specific events */
+export type EventHandler = (previousState: State | null, currentState: State) => void | Promise<void>;
 
-export type EnterEventHandler = (previousState: State, currentState: State) => void | Promise<void> | undefined;
-export type ExitEventHandler = (currentState: State, nextState: State) => void | Promise<void> | undefined;
+/** Handler for state enter events */
+export type EnterEventHandler = (previousState: State | null, currentState: State) => void | Promise<void>;
 
-export type AutoTransitionCondition = (state: State) => boolean | Promise<boolean>;
+/** Handler for state exit events */
+export type ExitEventHandler = (currentState: State, nextState: State) => void | Promise<void>;
 
-export class TransitionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "TransitionError";
-  }
-}
-
+/** Error thrown when a state operation fails */
 export class StateError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "StateError";
+  }
+}
+
+/** Error thrown when a transition operation fails */
+export class TransitionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TransitionError";
   }
 }
 
@@ -38,3 +42,20 @@ export type FluentStatePlugin =
   | ((fluentState: FluentState) => void)
   | ((prev: State | null, next: string, transition: () => void) => void)
   | { install: (fluentState: FluentState) => void };
+
+/**
+ * Configuration for an auto-transition.
+ *
+ * @template TContext - The type of context object used in the condition function.
+ */
+export interface AutoTransitionConfig<TContext = unknown> {
+  condition: (state: State, context: TContext) => boolean | Promise<boolean>;
+  targetState: string;
+}
+
+/**
+ * A function that determines if a transition should occur based on the current state and context.
+ *
+ * @template TContext - The type of context object used in the condition function.
+ */
+export type AutoTransition<TContext> = (state: State, context: TContext) => boolean | Promise<boolean>;
