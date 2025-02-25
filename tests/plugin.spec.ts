@@ -1,5 +1,5 @@
 import { fluentState, FluentState } from "../src/fluent-state";
-import { Lifecycle } from "../src/enums";
+import { Lifecycle } from "../src/types";
 import { expect } from "chai";
 import { State } from "../src/state";
 

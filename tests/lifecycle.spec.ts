@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { FluentState, State } from "../src";
-import { Lifecycle } from "../src/enums";
+import { Lifecycle } from "../src/types";
 
 describe("Lifecycle Events", () => {
   let fs: FluentState;

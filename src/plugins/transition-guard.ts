@@ -1,6 +1,5 @@
 import { FluentState } from "../fluent-state";
-import { Lifecycle } from "../enums";
-import { FluentStatePlugin } from "../types";
+import { FluentStatePlugin, Lifecycle } from "../types";
 import { State } from "../state";
 
 export type TransitionMiddlewareHandler = (currentState: State | null, nextStateName: string, proceed: () => void) => void | Promise<void>;

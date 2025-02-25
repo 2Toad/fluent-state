@@ -1,6 +1,28 @@
 import { State } from "./state";
 import { FluentState } from "./fluent-state";
 
+/**
+ * Enumeration of lifecycle events that can be observed in the state machine.
+ * These events are used to trigger custom logic at different stages of the state transition process.
+ */
+export enum Lifecycle {
+  BeforeTransition,
+  FailedTransition,
+  AfterTransition,
+}
+
+/**
+ * Configuration options for the FluentState instance.
+ */
+export interface FluentStateOptions {
+  /** Initial state name */
+  initialState?: string;
+  /** Whether to enable transition history tracking */
+  enableHistory?: boolean;
+  /** Configuration options for the transition history */
+  historyOptions?: TransitionHistoryOptions;
+}
+
 export type BeforeTransitionHandler = (currentState: State, nextState: string) => boolean | Promise<boolean>;
 export type FailedTransitionHandler = (currentState: State, targetState: string) => void | Promise<void> | undefined;
 export type AfterTransitionHandler = (previousState: State, currentState: State) => void | Promise<void> | undefined;
@@ -66,3 +88,70 @@ export interface AutoTransitionConfig<TContext = unknown> {
  * @template TContext - The type of context object used in the condition function.
  */
 export type AutoTransition<TContext = unknown> = (state: State, context: TContext) => boolean | Promise<boolean>;
+
+/**
+ * Represents a single transition entry in the history.
+ */
+export interface TransitionHistoryEntry {
+  /** The source state name */
+  from: string;
+  /** The target state name */
+  to: string;
+  /** Timestamp when the transition occurred */
+  timestamp: number;
+  /** Context data at the time of transition */
+  context: unknown;
+  /** Whether the transition was successful */
+  success: boolean;
+}
+
+/**
+ * Configuration options for the transition history.
+ */
+export interface TransitionHistoryOptions {
+  /** Maximum number of entries to keep in history (default: 100) */
+  maxSize?: number;
+  /** Whether to include context data in history entries (default: true) */
+  includeContext?: boolean;
+  /**
+   * Optional function to filter sensitive data from context during serialization.
+   * This function should return a sanitized version of the context.
+   */
+  contextFilter?: (context: unknown) => unknown;
+}
+
+/**
+ * Options for serializing transition history to JSON.
+ */
+export interface SerializationOptions {
+  /**
+   * Function to filter sensitive data from context during serialization.
+   * This overrides the contextFilter set in TransitionHistoryOptions.
+   */
+  contextFilter?: (context: unknown) => unknown;
+  /**
+   * Whether to include context data in the serialized output.
+   * This overrides the includeContext setting in TransitionHistoryOptions.
+   */
+  includeContext?: boolean;
+}
+
+/**
+ * Listener function for state changes.
+ *
+ * @template T - The type of the state object.
+ */
+export interface StateListener<T> {
+  (state: T): void;
+}
+
+/**
+ * Interface for managing state transitions and listeners.
+ *
+ * @template T - The type of the state object.
+ */
+export interface IStateManager<T> {
+  getState(): T;
+  setState(update: Partial<T>): void;
+  subscribe(listener: StateListener<T>): () => void;
+}

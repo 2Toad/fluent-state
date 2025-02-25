@@ -1,7 +1,7 @@
 import { FluentState } from "./fluent-state";
 import { Transition } from "./transition";
-import { EventHandler, EnterEventHandler, ExitEventHandler, AutoTransitionConfig, AutoTransition } from "./types";
-import { IStateManager, StateManager } from "./state-manager";
+import { EventHandler, EnterEventHandler, ExitEventHandler, AutoTransitionConfig, AutoTransition, IStateManager } from "./types";
+import { StateManager } from "./state-manager";
 
 /**
  * Represents a distinct state in the state machine.

@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { FluentState } from "../src";
-import { Lifecycle } from "../src/enums";
+import { Lifecycle } from "../src/types";
 
 function setupBasicStateMachine(fs: FluentState) {
   // prettier-ignore
