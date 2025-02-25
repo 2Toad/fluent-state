@@ -65,7 +65,7 @@ describe("Retry Configuration", () => {
 
   it("should stop retrying if condition returns false", async () => {
     let attempts = 0;
-    const fs = new FluentState({ initialState: "disconnected" });
+    const fs = new FluentState();
 
     // Suppress console output
     const { flags, restore } = suppressConsole();
@@ -101,7 +101,7 @@ describe("Retry Configuration", () => {
   it("should exhaust all retries and fail if errors persist", async () => {
     let attemptsA = 0;
     let attemptsB = 0;
-    const fs = new FluentState({ initialState: "initial" });
+    const fs = new FluentState();
 
     // Suppress console output
     const { flags, restore } = suppressConsole();
