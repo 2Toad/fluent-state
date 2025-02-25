@@ -242,6 +242,11 @@ export class FluentState {
       state.transitions = state.transitions.filter((transition) => transition !== name);
     });
 
+    // Remove all transitions involving this state from all groups
+    this.groups.forEach((group) => {
+      group.removeTransitionsInvolvingState(name);
+    });
+
     // If we're removing the current state, set the current state to the next available state
     if (this.state === stateToRemove) {
       const nextState = this.states.values().next().value;

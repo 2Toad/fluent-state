@@ -275,6 +275,117 @@ describe("Transition Groups", () => {
       const config = group.getEffectiveConfig("a", "b");
       expect(config).to.be.undefined;
     });
+
+    it("should support tagging transitions", () => {
+      group.addTransition(
+        "a",
+        "b",
+        {
+          condition: () => true,
+          targetState: "b",
+        },
+        ["important", "auth"],
+      );
+
+      group.addTransition(
+        "a",
+        "c",
+        {
+          condition: () => true,
+          targetState: "c",
+        },
+        ["secondary", "auth"],
+      );
+
+      // Adding more tags to an existing transition
+      group.addTagsToTransition("a", "b", ["critical"]);
+
+      // Check tag assignments
+      expect(group.getTagsForTransition("a", "b")).to.include("important");
+      expect(group.getTagsForTransition("a", "b")).to.include("auth");
+      expect(group.getTagsForTransition("a", "b")).to.include("critical");
+      expect(group.getTagsForTransition("a", "c")).to.include("secondary");
+      expect(group.getTagsForTransition("a", "c")).to.include("auth");
+
+      // Get transitions by tag
+      const authTransitions = group.getTransitionsByTag("auth");
+      expect(authTransitions).to.have.length(2);
+      expect(authTransitions).to.deep.include(["a", "b"]);
+      expect(authTransitions).to.deep.include(["a", "c"]);
+
+      const criticalTransitions = group.getTransitionsByTag("critical");
+      expect(criticalTransitions).to.have.length(1);
+      expect(criticalTransitions).to.deep.include(["a", "b"]);
+
+      // Remove a tag
+      group.removeTagFromTransition("a", "b", "important");
+      expect(group.getTagsForTransition("a", "b")).to.not.include("important");
+      expect(group.getTagsForTransition("a", "b")).to.include("auth");
+      expect(group.getTagsForTransition("a", "b")).to.include("critical");
+    });
+
+    it("should support tagging transitions with the fluent API", () => {
+      group
+        .from("a")
+        .withTags("important", "auth")
+        .to("b", {
+          condition: () => true,
+          targetState: "b",
+        })
+        .withTags("secondary")
+        .or("c", {
+          condition: () => true,
+          targetState: "c",
+        });
+
+      // Check tag assignments
+      expect(group.getTagsForTransition("a", "b")).to.include("important");
+      expect(group.getTagsForTransition("a", "b")).to.include("auth");
+      expect(group.getTagsForTransition("a", "c")).to.include("secondary");
+    });
+
+    it("should include tags in serialized output", () => {
+      group.addTransition(
+        "a",
+        "b",
+        {
+          condition: () => true,
+          targetState: "b",
+        },
+        ["important", "auth"],
+      );
+
+      const serialized = group.serialize();
+      expect(serialized.transitions[0].tags).to.deep.equal(["important", "auth"]);
+    });
+
+    it("should restore tags when deserializing a group", () => {
+      const serialized: SerializedTransitionGroup = {
+        name: "test",
+        enabled: true,
+        config: {},
+        transitions: [
+          {
+            from: "a",
+            to: "b",
+            config: {
+              targetState: "b",
+            },
+            tags: ["important", "auth"],
+          },
+        ],
+      };
+
+      fs.removeGroup("test");
+      const newGroup = fs.createGroupFromConfig(serialized, {
+        a: {
+          b: () => true,
+        },
+      });
+
+      expect(newGroup.getTagsForTransition("a", "b")).to.include("important");
+      expect(newGroup.getTagsForTransition("a", "b")).to.include("auth");
+    });
   });
 
   describe("Group-level Configuration", () => {
@@ -653,6 +764,82 @@ describe("Transition Groups", () => {
       expect(() => {
         fs.importGroups(exported);
       }).to.throw('Group with name "test" already exists');
+    });
+  });
+
+  describe("State Removal and Transition Cleanup", () => {
+    let fs: FluentState;
+    let group1: TransitionGroup;
+    let group2: TransitionGroup;
+
+    beforeEach(() => {
+      fs = new FluentState({
+        initialState: "idle",
+      });
+      group1 = fs.createGroup("group1");
+      group2 = fs.createGroup("group2");
+
+      // Add transitions to both groups
+      group1.addTransition("a", "b", {
+        condition: () => true,
+        targetState: "b",
+      });
+      group1.addTransition("b", "c", {
+        condition: () => true,
+        targetState: "c",
+      });
+      group1.addTransition("a", "c", {
+        condition: () => true,
+        targetState: "c",
+      });
+
+      group2.addTransition("a", "d", {
+        condition: () => true,
+        targetState: "d",
+      });
+      group2.addTransition("b", "d", {
+        condition: () => true,
+        targetState: "d",
+      });
+    });
+
+    it("should remove transitions from all groups when a state is removed", () => {
+      // Verify initial state
+      expect(group1.hasTransition("a", "b")).to.be.true;
+      expect(group1.hasTransition("b", "c")).to.be.true;
+      expect(group1.hasTransition("a", "c")).to.be.true;
+      expect(group2.hasTransition("a", "d")).to.be.true;
+      expect(group2.hasTransition("b", "d")).to.be.true;
+
+      // Remove state 'b'
+      fs.remove("b");
+
+      // Check that transitions involving 'b' are removed from both groups
+      expect(group1.hasTransition("a", "b")).to.be.false;
+      expect(group1.hasTransition("b", "c")).to.be.false;
+      expect(group1.hasTransition("a", "c")).to.be.true; // This should remain
+      expect(group2.hasTransition("a", "d")).to.be.true; // This should remain
+      expect(group2.hasTransition("b", "d")).to.be.false;
+    });
+
+    it("should clean up tags when a state is removed", () => {
+      // Add tags to transitions
+      group1.addTagsToTransition("a", "b", ["tag1"]);
+      group1.addTagsToTransition("b", "c", ["tag2"]);
+      group1.addTagsToTransition("a", "c", ["tag3"]);
+
+      // Verify initial tags
+      expect(group1.getTransitionsByTag("tag1")).to.have.length(1);
+      expect(group1.getTransitionsByTag("tag2")).to.have.length(1);
+      expect(group1.getTransitionsByTag("tag3")).to.have.length(1);
+
+      // Remove state 'b'
+      fs.remove("b");
+
+      // Check that tags for removed transitions are cleaned up
+      expect(group1.getTransitionsByTag("tag1")).to.have.length(0);
+      expect(group1.getTransitionsByTag("tag2")).to.have.length(0);
+      expect(group1.getTransitionsByTag("tag3")).to.have.length(1);
     });
   });
 });

@@ -236,5 +236,6 @@ export interface SerializedTransitionGroup {
     from: string;
     to: string;
     config?: Omit<AutoTransitionConfig, "condition">; // Condition functions cannot be serialized
+    tags?: string[]; // Optional tags for categorizing transitions
   }>;
 }

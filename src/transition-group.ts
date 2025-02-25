@@ -39,6 +39,9 @@ export class TransitionGroup {
   /** Map of transitions in this group, organized by source state */
   private transitions: Map<string, Map<string, AutoTransitionConfig>> = new Map();
 
+  /** Map of tags to transitions, for organizing transitions into sub-categories */
+  private tagsMap: Map<string, Set<[string, string]>> = new Map();
+
   /** Timeout for temporary disabling */
   private temporaryDisableTimeout?: NodeJS.Timeout;
 
@@ -98,9 +101,10 @@ export class TransitionGroup {
    * @param fromState - The source state name
    * @param toState - The target state name
    * @param config - Optional configuration for this transition
+   * @param tags - Optional array of tags to categorize this transition
    * @returns This group instance for chaining
    */
-  addTransition(fromState: string, toState: string, config?: AutoTransitionConfig): TransitionGroup {
+  addTransition(fromState: string, toState: string, config?: AutoTransitionConfig, tags?: string[]): TransitionGroup {
     // Ensure the states exist
     if (!this.fluentState.states.has(fromState)) {
       this.fluentState._addState(fromState);
@@ -143,6 +147,11 @@ export class TransitionGroup {
     const sourceState = this.fluentState.states.get(fromState)!;
     sourceState._addTransition(toState);
 
+    // Add tags if provided
+    if (tags && tags.length > 0) {
+      this.addTagsToTransition(fromState, toState, tags);
+    }
+
     return this;
   }
 
@@ -161,9 +170,101 @@ export class TransitionGroup {
       if (this.transitions.get(fromState)!.size === 0) {
         this.transitions.delete(fromState);
       }
+
+      // Remove this transition from all tags
+      this.tagsMap.forEach((transitions, tag) => {
+        transitions.delete([fromState, toState]);
+        if (transitions.size === 0) {
+          this.tagsMap.delete(tag);
+        }
+      });
     }
 
     return this;
+  }
+
+  /**
+   * Add tags to an existing transition.
+   *
+   * @param fromState - The source state name
+   * @param toState - The target state name
+   * @param tags - Array of tags to add to the transition
+   * @returns This group instance for chaining
+   */
+  addTagsToTransition(fromState: string, toState: string, tags: string[]): TransitionGroup {
+    if (!this.hasTransition(fromState, toState)) {
+      return this;
+    }
+
+    const transitionPair: [string, string] = [fromState, toState];
+
+    tags.forEach((tag) => {
+      if (!this.tagsMap.has(tag)) {
+        this.tagsMap.set(tag, new Set());
+      }
+      this.tagsMap.get(tag)!.add(transitionPair);
+    });
+
+    return this;
+  }
+
+  /**
+   * Remove a tag from a transition.
+   *
+   * @param fromState - The source state name
+   * @param toState - The target state name
+   * @param tag - The tag to remove
+   * @returns This group instance for chaining
+   */
+  removeTagFromTransition(fromState: string, toState: string, tag: string): TransitionGroup {
+    if (this.tagsMap.has(tag)) {
+      // We need to find the entry by comparing individual elements
+      // since direct array comparison by reference won't work
+      const transitions = this.tagsMap.get(tag)!;
+      const toRemove = Array.from(transitions).find((pair) => pair[0] === fromState && pair[1] === toState);
+
+      if (toRemove) {
+        transitions.delete(toRemove);
+
+        // Clean up empty tag sets
+        if (transitions.size === 0) {
+          this.tagsMap.delete(tag);
+        }
+      }
+    }
+    return this;
+  }
+
+  /**
+   * Get all transitions with a specific tag.
+   *
+   * @param tag - The tag to filter by
+   * @returns Array of transitions [fromState, toState] with the specified tag
+   */
+  getTransitionsByTag(tag: string): Array<[string, string]> {
+    return this.tagsMap.has(tag) ? Array.from(this.tagsMap.get(tag)!) : [];
+  }
+
+  /**
+   * Get all tags for a specific transition.
+   *
+   * @param fromState - The source state name
+   * @param toState - The target state name
+   * @returns Array of tags associated with the transition
+   */
+  getTagsForTransition(fromState: string, toState: string): string[] {
+    const result: string[] = [];
+
+    this.tagsMap.forEach((transitions, tag) => {
+      for (const t of transitions) {
+        if (t[0] === fromState && t[1] === toState) {
+          result.push(tag);
+          break;
+        }
+      }
+    });
+
+    return result;
   }
 
   /**
@@ -275,6 +376,7 @@ export class TransitionGroup {
           from: fromState,
           to: toState,
           config: serializableConfig,
+          tags: this.getTagsForTransition(fromState, toState),
         });
       });
     });
@@ -305,7 +407,7 @@ export class TransitionGroup {
     this.config = { ...serialized.config };
 
     // Add all transitions
-    serialized.transitions.forEach(({ from, to, config }) => {
+    serialized.transitions.forEach(({ from, to, config, tags }) => {
       // Try to find condition in the provided map using safe property access
       let condition: AutoTransitionConfig["condition"] | undefined;
 
@@ -322,11 +424,67 @@ export class TransitionGroup {
       }
 
       // Add the transition with the merged config
-      this.addTransition(from, to, {
-        ...config,
-        condition,
-        targetState: to,
+      this.addTransition(
+        from,
+        to,
+        {
+          ...config,
+          condition,
+          targetState: to,
+        },
+        tags,
+      );
+    });
+
+    return this;
+  }
+
+  /**
+   * Removes all transitions involving a specific state.
+   * This is used when a state is removed from the state machine.
+   *
+   * @param stateName - The name of the state being removed
+   * @returns This group instance for chaining
+   */
+  removeTransitionsInvolvingState(stateName: string): TransitionGroup {
+    // Remove transitions where this state is the source
+    if (this.transitions.has(stateName)) {
+      this.transitions.delete(stateName);
+    }
+
+    // Remove transitions where this state is the target
+    this.transitions.forEach((toStates, fromState) => {
+      if (toStates.has(stateName)) {
+        toStates.delete(stateName);
+
+        // If there are no more transitions from this state, clean up
+        if (toStates.size === 0) {
+          this.transitions.delete(fromState);
+        }
+      }
+    });
+
+    // Update tags - we need to properly identify transitions to remove
+    this.tagsMap.forEach((transitions, tag) => {
+      // Create a new array to hold transitions to remove
+      const transitionsToRemove: Array<[string, string]> = [];
+
+      // Find all transitions involving the removed state
+      transitions.forEach((transition) => {
+        if (transition[0] === stateName || transition[1] === stateName) {
+          transitionsToRemove.push(transition);
+        }
       });
+
+      // Remove them from this tag
+      transitionsToRemove.forEach((transition) => {
+        transitions.delete(transition);
+      });
+
+      // Clean up empty tag sets
+      if (transitions.size === 0) {
+        this.tagsMap.delete(tag);
+      }
     });
 
     return this;
@@ -340,10 +498,22 @@ export class TransitionBuilder {
   private group: TransitionGroup;
   private fromState: string;
   private lastToState?: string;
+  private currentTags: string[] = [];
 
   constructor(group: TransitionGroup, fromState: string) {
     this.group = group;
     this.fromState = fromState;
+  }
+
+  /**
+   * Adds tags to use for subsequent transitions.
+   *
+   * @param tags - The tags to apply to the next transition
+   * @returns This builder instance for chaining
+   */
+  withTags(...tags: string[]): TransitionBuilder {
+    this.currentTags = tags;
+    return this;
   }
 
   /**
@@ -354,8 +524,9 @@ export class TransitionBuilder {
    * @returns This builder instance for chaining
    */
   to<TContext = unknown>(toState: string, config?: AutoTransitionConfig<TContext>): TransitionBuilder {
-    this.group.addTransition(this.fromState, toState, config);
+    this.group.addTransition(this.fromState, toState, config, this.currentTags);
     this.lastToState = toState;
+    this.currentTags = []; // Reset tags after use
     return this;
   }
 
@@ -372,8 +543,9 @@ export class TransitionBuilder {
       throw new Error("or() must be called after to()");
     }
 
-    this.group.addTransition(this.fromState, toState, config);
+    this.group.addTransition(this.fromState, toState, config, this.currentTags);
     this.lastToState = toState;
+    this.currentTags = []; // Reset tags after use
     return this;
   }
 }
