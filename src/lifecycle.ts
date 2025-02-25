@@ -1,6 +1,5 @@
-import { Lifecycle } from "./enums";
 import { State } from "./state";
-import { BeforeTransitionHandler, FailedTransitionHandler, AfterTransitionHandler, LifeCycleHandler } from "./types";
+import { BeforeTransitionHandler, FailedTransitionHandler, AfterTransitionHandler, LifeCycleHandler, Lifecycle } from "./types";
 
 /**
  * Interface for executing lifecycle event handlers.

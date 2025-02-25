@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { FluentState, TransitionHistory, TransitionHistoryOptions } from "../src";
+import { FluentState, TransitionHistory, TransitionHistoryOptions, SerializationOptions } from "../src";
 import { fluentState } from "../src/fluent-state";
 
 describe("Transition History", () => {
@@ -379,6 +379,221 @@ describe("Transition History", () => {
       // Verify context is not included in transition
       const transition = fs.history!.getLastTransition();
       expect(transition!.context).to.be.undefined;
+    });
+  });
+
+  describe("Serialization", () => {
+    it("should serialize transition history to JSON", async () => {
+      // Create a state machine with history enabled
+      const fs = new FluentState({
+        initialState: "idle",
+        enableHistory: true,
+      });
+
+      // Define states and transitions
+      fs.from("idle").to("running");
+      fs.from("running").to("paused");
+
+      // Start the state machine
+      await fs.start();
+
+      // Perform transitions
+      await fs.transition("running");
+      await fs.transition("paused");
+
+      // Serialize the history
+      const json = fs.history!.toJSON();
+
+      // Parse the JSON to verify its structure
+      const parsed = JSON.parse(json);
+
+      // Verify the serialized history
+      expect(parsed).to.be.an("array");
+      expect(parsed.length).to.equal(3); // Initial + 2 transitions
+      expect(parsed[0].from).to.equal("running");
+      expect(parsed[0].to).to.equal("paused");
+      expect(parsed[0].success).to.be.true;
+    });
+
+    it("should filter sensitive context data during serialization", async () => {
+      // Create a state machine with history enabled and a context filter
+      const fs = new FluentState({
+        initialState: "idle",
+        enableHistory: true,
+        historyOptions: {
+          contextFilter: (context: any) => {
+            if (!context) return context;
+            // Create a filtered copy without sensitive data
+            const filtered = { ...context };
+            if (filtered.user) {
+              // Remove sensitive user data but keep id
+              filtered.user = { id: filtered.user.id };
+            }
+            return filtered;
+          },
+        },
+      });
+
+      // Define states and transitions
+      fs.from("idle").to("running");
+
+      // Start the state machine
+      await fs.start();
+
+      // Update context with sensitive data and perform transition
+      fs.state.updateContext({
+        status: "ready",
+        user: { id: 123, name: "Test User", email: "test@example.com", password: "secret" },
+      });
+      await fs.transition("running");
+
+      // Serialize the history
+      const json = fs.history!.toJSON();
+      const parsed = JSON.parse(json);
+
+      // Verify sensitive data is filtered
+      expect(parsed[0].context.user).to.deep.equal({ id: 123 });
+      expect(parsed[0].context.user.name).to.be.undefined;
+      expect(parsed[0].context.user.email).to.be.undefined;
+      expect(parsed[0].context.user.password).to.be.undefined;
+      expect(parsed[0].context.status).to.equal("ready");
+    });
+
+    it("should override context filter during serialization", async () => {
+      // Create a state machine with history enabled and a default context filter
+      const fs = new FluentState({
+        initialState: "idle",
+        enableHistory: true,
+        historyOptions: {
+          contextFilter: (context: any) => {
+            if (!context) return context;
+            return { filtered: "default" };
+          },
+        },
+      });
+
+      // Define states and transitions
+      fs.from("idle").to("running");
+
+      // Start the state machine
+      await fs.start();
+
+      // Update context and perform transition
+      fs.state.updateContext({ status: "ready", sensitive: true });
+      await fs.transition("running");
+
+      // Serialize with a custom filter that overrides the default
+      const json = fs.history!.toJSON({
+        contextFilter: (context: any) => {
+          if (!context) return context;
+          return { filtered: "custom", status: context.status };
+        },
+      });
+
+      const parsed = JSON.parse(json);
+
+      // Verify custom filter was applied
+      expect(parsed[0].context.filtered).to.equal("custom");
+      expect(parsed[0].context.status).to.equal("ready");
+      expect(parsed[0].context.sensitive).to.be.undefined;
+    });
+
+    it("should exclude context data during serialization if specified", async () => {
+      // Create a state machine with history enabled
+      const fs = new FluentState({
+        initialState: "idle",
+        enableHistory: true,
+      });
+
+      // Define states and transitions
+      fs.from("idle").to("running");
+
+      // Start the state machine
+      await fs.start();
+
+      // Update context and perform transition
+      fs.state.updateContext({ status: "ready", sensitive: true });
+      await fs.transition("running");
+
+      // Serialize without context
+      const json = fs.history!.toJSON({ includeContext: false });
+      const parsed = JSON.parse(json);
+
+      // Verify context is excluded
+      expect(parsed[0].context).to.be.undefined;
+    });
+
+    it("should import serialized history with fromJSON", async () => {
+      // Create a state machine and generate some history
+      const fs = new FluentState({
+        initialState: "idle",
+        enableHistory: true,
+      });
+
+      fs.from("idle").to("running");
+      await fs.start();
+      await fs.transition("running");
+
+      // Serialize the history
+      const json = fs.history!.toJSON();
+
+      // Create a new history instance from the JSON
+      const importedHistory = TransitionHistory.fromJSON(json);
+
+      // Verify the imported history
+      const entries = importedHistory.getAll();
+      expect(entries.length).to.equal(2); // Initial + 1 transition
+      expect(entries[0].from).to.equal("idle");
+      expect(entries[0].to).to.equal("running");
+      expect(entries[0].success).to.be.true;
+    });
+
+    it("should apply options when importing serialized history", async () => {
+      // Create a state machine and generate some history
+      const fs = new FluentState({
+        initialState: "idle",
+        enableHistory: true,
+      });
+
+      fs.from("idle").to("running");
+      await fs.start();
+      fs.state.updateContext({ sensitive: true });
+      await fs.transition("running");
+
+      // Serialize the history
+      const json = fs.history!.toJSON();
+
+      // Import with custom options
+      const importedHistory = TransitionHistory.fromJSON(json, {
+        maxSize: 5,
+        includeContext: true,
+        contextFilter: (context: any) => {
+          if (!context) return context;
+          return { filtered: true };
+        },
+      });
+
+      // Verify the imported history
+      const entries = importedHistory.getAll();
+      expect(entries.length).to.equal(2);
+
+      // Verify the context is preserved during import
+      expect(entries[0].context).to.deep.include({ sensitive: true });
+
+      // Serialize the imported history to verify the filter is applied
+      const reserializedJson = importedHistory.toJSON();
+      const reparsed = JSON.parse(reserializedJson);
+
+      // Verify the filter is applied on re-serialization
+      expect(reparsed[0].context).to.deep.equal({ filtered: true });
+    });
+
+    it("should handle invalid JSON gracefully", () => {
+      // Try to import invalid JSON
+      const importedHistory = TransitionHistory.fromJSON("invalid json");
+
+      // Should return an empty history instance
+      expect(importedHistory.getAll().length).to.equal(0);
     });
   });
 });

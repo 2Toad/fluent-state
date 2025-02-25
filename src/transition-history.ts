@@ -1,30 +1,5 @@
 import { State } from "./state";
-
-/**
- * Represents a single transition entry in the history.
- */
-export interface TransitionHistoryEntry {
-  /** The source state name */
-  from: string;
-  /** The target state name */
-  to: string;
-  /** Timestamp when the transition occurred */
-  timestamp: number;
-  /** Context data at the time of transition */
-  context: unknown;
-  /** Whether the transition was successful */
-  success: boolean;
-}
-
-/**
- * Configuration options for the transition history.
- */
-export interface TransitionHistoryOptions {
-  /** Maximum number of entries to keep in history (default: 100) */
-  maxSize?: number;
-  /** Whether to include context data in history entries (default: true) */
-  includeContext?: boolean;
-}
+import { TransitionHistoryEntry, TransitionHistoryOptions, SerializationOptions } from "./types";
 
 /**
  * Manages a history of state transitions.
@@ -35,7 +10,7 @@ export class TransitionHistory {
   private history: TransitionHistoryEntry[] = [];
 
   /** Configuration options */
-  private options: Required<TransitionHistoryOptions>;
+  private options: Required<TransitionHistoryOptions & { contextFilter: ((context: unknown) => unknown) | null }>;
 
   /**
    * Creates a new TransitionHistory instance.
@@ -46,6 +21,7 @@ export class TransitionHistory {
     this.options = {
       maxSize: options.maxSize ?? 100,
       includeContext: options.includeContext ?? true,
+      contextFilter: options.contextFilter ?? null,
     };
   }
 
@@ -122,10 +98,62 @@ export class TransitionHistory {
 
   /**
    * Converts the transition history to a JSON string.
+   * Optionally filters sensitive context data during serialization.
    *
+   * @param options - Options for serialization
    * @returns A JSON string representation of the transition history
    */
-  toJSON(): string {
-    return JSON.stringify(this.history);
+  toJSON(options: SerializationOptions = {}): string {
+    // Determine whether to include context
+    const includeContext = options.includeContext !== undefined ? options.includeContext : this.options.includeContext;
+
+    // Determine which context filter to use
+    const contextFilter = options.contextFilter || this.options.contextFilter;
+
+    // Create a copy of the history for serialization
+    const serializedHistory = this.history.map((entry) => {
+      const serializedEntry = { ...entry };
+
+      // Handle context based on includeContext setting
+      if (!includeContext) {
+        serializedEntry.context = undefined;
+      }
+      // Apply context filter if available and context exists
+      else if (contextFilter && serializedEntry.context !== undefined) {
+        serializedEntry.context = contextFilter(serializedEntry.context);
+      }
+
+      return serializedEntry;
+    });
+
+    return JSON.stringify(serializedHistory);
+  }
+
+  /**
+   * Creates a TransitionHistory instance from a JSON string.
+   *
+   * @param json - JSON string representation of transition history
+   * @param options - Configuration options for the new TransitionHistory instance
+   * @returns A new TransitionHistory instance with the imported history
+   */
+  static fromJSON(json: string, options: TransitionHistoryOptions = {}): TransitionHistory {
+    try {
+      const parsedHistory = JSON.parse(json) as TransitionHistoryEntry[];
+
+      // Create a new TransitionHistory instance with the provided options
+      const history = new TransitionHistory(options);
+
+      // Add each entry to the history in reverse order to maintain chronology
+      // (since add() adds to the beginning)
+      for (let i = parsedHistory.length - 1; i >= 0; i--) {
+        history.add(parsedHistory[i]);
+      }
+
+      return history;
+    } catch (error) {
+      console.error("Failed to parse transition history JSON:", error);
+      // Return an empty history instance if parsing fails
+      return new TransitionHistory(options);
+    }
   }
 }

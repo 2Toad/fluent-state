@@ -1,6 +1,5 @@
-import { Lifecycle } from "./enums";
 import { State } from "./state";
-import { LifeCycleHandler } from "./types";
+import { LifeCycleHandler, Lifecycle } from "./types";
 import { LifecycleHandlerFactory } from "./lifecycle";
 
 /**

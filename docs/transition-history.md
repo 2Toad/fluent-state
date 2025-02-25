@@ -41,6 +41,7 @@ const fs = new FluentState({
 |----------|------|---------|-------------|
 | `maxSize` | number | 100 | Maximum number of transition entries to keep in history. When this limit is reached, the oldest entries are removed first. |
 | `includeContext` | boolean | true | Whether to include context data in transition history entries. Disable this if your context contains sensitive information or large objects that would consume too much memory. |
+| `contextFilter` | function | null | Optional function to filter sensitive data from context during serialization. This function should return a sanitized version of the context. |
 
 ## Transition History Entries
 
@@ -90,7 +91,15 @@ const allTransitions = fs.history.getAll();
 | `getTransitionsForState(stateName: string)` | Returns an array of transition entries involving the specified state (either as source or target). |
 | `getAll()` | Returns an array of all transition history entries. |
 | `clear()` | Clears all transition history. |
-| `toJSON()` | Converts the transition history to a JSON string. |
+| `toJSON(options?: SerializationOptions)` | Converts the transition history to a JSON string. Accepts optional serialization options to override the default configuration. |
+| `static fromJSON(json: string, options?: TransitionHistoryOptions)` | Creates a new TransitionHistory instance from a JSON string. |
+
+### `SerializationOptions` Interface
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `contextFilter` | function | Function to filter sensitive data from context during serialization. This overrides the contextFilter set in TransitionHistoryOptions. |
+| `includeContext` | boolean | Whether to include context data in the serialized output. This overrides the includeContext setting in TransitionHistoryOptions. |
 
 ## Examples
 
@@ -264,6 +273,94 @@ function generateStateAnalytics() {
 }
 
 generateStateAnalytics();
+```
+
+### Serialization and Context Filtering
+
+```typescript
+import { FluentState } from "@2toad/fluent-state";
+
+// Create a state machine with history enabled and context filtering
+const fs = new FluentState({
+  initialState: "idle",
+  enableHistory: true,
+  historyOptions: {
+    includeContext: true,
+    contextFilter: (context: any) => {
+      if (!context) return context;
+      // Create a filtered copy without sensitive data
+      const filtered = { ...context };
+      if (filtered.user) {
+        // Remove sensitive user data but keep id
+        filtered.user = { id: filtered.user.id };
+      }
+      return filtered;
+    }
+  }
+});
+
+// Define states and transitions
+fs.from("idle").to("running");
+fs.from("running").to("completed");
+
+// Start the state machine
+await fs.start();
+
+// Update context with sensitive data
+fs.state.updateContext({
+  status: "ready",
+  user: { 
+    id: 123, 
+    name: "Test User", 
+    email: "test@example.com", 
+    password: "secret" 
+  }
+});
+
+// Perform transitions
+await fs.transition("running");
+await fs.transition("completed");
+
+// Serialize the history with default options (using the configured contextFilter)
+const json = fs.history.toJSON();
+console.log(JSON.parse(json));
+// Output will include filtered context: { status: "ready", user: { id: 123 } }
+
+// Serialize with custom options to override the default filter
+const customJson = fs.history.toJSON({
+  contextFilter: (context: any) => {
+    if (!context) return context;
+    return { status: context.status }; // Only include status
+  }
+});
+console.log(JSON.parse(customJson));
+// Output will include only status: { status: "ready" }
+
+// Serialize without any context
+const noContextJson = fs.history.toJSON({ includeContext: false });
+console.log(JSON.parse(noContextJson));
+// Output will not include any context data
+
+// Import serialized history into a new instance
+const importedHistory = TransitionHistory.fromJSON(json);
+console.log(importedHistory.getAll());
+```
+
+### Handling Invalid JSON
+
+```typescript
+import { TransitionHistory } from "@2toad/fluent-state";
+
+// Try to import invalid JSON
+try {
+  const importedHistory = TransitionHistory.fromJSON("invalid json");
+  
+  // This will be an empty history instance
+  console.log(`Imported history has ${importedHistory.getAll().length} entries`);
+} catch (error) {
+  // The fromJSON method handles errors internally, so this catch block won't execute
+  console.error("This won't be reached:", error);
+}
 ```
 
 ## Best Practices

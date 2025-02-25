@@ -1,12 +1,4 @@
-export interface StateListener<T> {
-  (state: T): void;
-}
-
-export interface IStateManager<T> {
-  getState(): T;
-  setState(update: Partial<T>): void;
-  subscribe(listener: StateListener<T>): () => void;
-}
+import { IStateManager, StateListener } from "./types";
 
 export class StateManager<T extends object> implements IStateManager<T> {
   private state: T;

@@ -1,24 +1,8 @@
 import { State } from "./state";
 import { Event } from "./event";
 import { Observer } from "./observer";
-import { Lifecycle } from "./enums";
-import { LifeCycleHandler } from "./types";
-import { FluentStatePlugin } from "./types";
-import { TransitionError, StateError } from "./types";
+import { LifeCycleHandler, FluentStatePlugin, Lifecycle, TransitionError, StateError, FluentStateOptions, TransitionHistoryOptions } from "./types";
 import { TransitionHistory } from "./transition-history";
-import { TransitionHistoryOptions } from "./types";
-
-/**
- * Configuration options for the FluentState instance.
- */
-export interface FluentStateOptions {
-  /** Initial state name */
-  initialState?: string;
-  /** Whether to enable transition history tracking */
-  enableHistory?: boolean;
-  /** Configuration options for the transition history */
-  historyOptions?: TransitionHistoryOptions;
-}
 
 /**
  * The main class for building and managing a state machine.
