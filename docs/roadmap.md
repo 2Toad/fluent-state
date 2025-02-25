@@ -311,11 +311,11 @@ Acceptance Criteria:
    - ✅ Integration with the proposed logging system to provide group-specific logging
 
 7. Nested Groups and Composition
-   - Support for defining groups within groups for hierarchical organization
-   - Child groups inherit configuration from parent groups unless overridden
-   - Enable/disable operations cascade to child groups
-   - Provide methods to navigate the group hierarchy: `group.parent()`, `group.children()`
-   - Support for composition patterns to reuse group definitions across state machines
+   - ✅ Support for defining groups within groups for hierarchical organization
+   - ✅ Child groups inherit configuration from parent groups unless overridden
+   - ✅ Enable/disable operations cascade to child groups
+   - ✅ Provide methods to navigate the group hierarchy: `group.parent()`, `group.children()`
+   - ✅ Support for composition patterns to reuse group definitions across state machines
 
 9. Testing and Debugging Support
    - Provide snapshot capabilities for group state: `group.createSnapshot()`

@@ -167,6 +167,69 @@ export class TransitionGroup {
   }
 
   /**
+   * Gets all descendant groups (children, grandchildren, etc.) of this group.
+   *
+   * @returns Array of all descendant groups in a flattened structure
+   */
+  getAllDescendants(): TransitionGroup[] {
+    const descendants: TransitionGroup[] = [];
+
+    // Add immediate children
+    const children = this.getChildGroups();
+    descendants.push(...children);
+
+    // Recursively add their descendants
+    for (const child of children) {
+      descendants.push(...child.getAllDescendants());
+    }
+
+    return descendants;
+  }
+
+  /**
+   * Gets the hierarchy path from root to this group.
+   *
+   * @returns Array of groups from root to this group (inclusive)
+   */
+  getHierarchyPath(): TransitionGroup[] {
+    const path: TransitionGroup[] = [this];
+    let current = this.parentGroup;
+
+    while (current) {
+      path.unshift(current);
+      current = current.getParent();
+    }
+
+    return path;
+  }
+
+  /**
+   * Gets the root group (topmost ancestor) in the hierarchy.
+   *
+   * @returns The root group (this group if it has no parent)
+   */
+  getRoot(): TransitionGroup {
+    if (!this.parentGroup) {
+      return this;
+    }
+
+    return this.parentGroup.getRoot();
+  }
+
+  /**
+   * Gets sibling groups (groups that share the same parent).
+   *
+   * @returns Array of sibling groups (excluding this group)
+   */
+  getSiblings(): TransitionGroup[] {
+    if (!this.parentGroup) {
+      return [];
+    }
+
+    return this.parentGroup.getChildGroups().filter((group) => group !== this);
+  }
+
+  /**
    * Sets configuration options for this group.
    * These will be applied to all transitions in the group unless overridden.
    *
@@ -491,11 +554,12 @@ export class TransitionGroup {
   }
 
   /**
-   * Enables this group, making its transitions available for evaluation.
+   * Enables this group and optionally all its descendants.
    *
+   * @param options - Optional settings for enabling the group
    * @returns This group instance for chaining
    */
-  enable(): TransitionGroup {
+  enable(options?: { cascade?: boolean }): TransitionGroup {
     const wasDisabled = !this.enabled;
     this.enabled = true;
     this.preventManualTransitions = false; // Reset when enabling
@@ -511,6 +575,13 @@ export class TransitionGroup {
       this._triggerEnableHandlers();
     }
 
+    // Cascade enable to all child groups if requested
+    if (options?.cascade) {
+      for (const child of this.getChildGroups()) {
+        child.enable(options);
+      }
+    }
+
     return this;
   }
 
@@ -520,7 +591,7 @@ export class TransitionGroup {
    * @param options - Optional settings for how the group is disabled
    * @returns This group instance for chaining
    */
-  disable(options?: { preventManualTransitions?: boolean }): TransitionGroup {
+  disable(options?: { preventManualTransitions?: boolean; cascade?: boolean }): TransitionGroup {
     const wasEnabled = this.enabled;
     this.enabled = false;
 
@@ -540,6 +611,13 @@ export class TransitionGroup {
       this._triggerDisableHandlers(this.preventManualTransitions);
     }
 
+    // Cascade disable to all child groups if requested
+    if (options?.cascade) {
+      for (const child of this.getChildGroups()) {
+        child.disable(options);
+      }
+    }
+
     return this;
   }
 
@@ -551,12 +629,12 @@ export class TransitionGroup {
    * @param options - Optional settings for how the group is disabled
    * @returns This group instance for chaining
    */
-  disableTemporarily(duration: number, callback?: () => void, options?: { preventManualTransitions?: boolean }): TransitionGroup {
+  disableTemporarily(duration: number, callback?: () => void, options?: { preventManualTransitions?: boolean; cascade?: boolean }): TransitionGroup {
     // Call disable with the provided options
     this.disable(options);
 
     this.temporaryDisableTimeout = setTimeout(() => {
-      this.enable();
+      this.enable({ cascade: options?.cascade });
       if (callback) {
         callback();
       }
@@ -694,6 +772,7 @@ export class TransitionGroup {
       config: serializableConfig,
       transitions: serializedTransitions,
       parentGroup: this.parentGroup ? this.parentGroup.getFullName() : undefined,
+      childGroups: this.getChildGroups().map((child) => child.getFullName()),
     };
   }
 
@@ -1116,6 +1195,150 @@ export class TransitionGroup {
     }
 
     return this.fluentState.history.getTransitionsForGroup(this.getFullName());
+  }
+
+  /**
+   * Creates a copy of this group and its configuration.
+   * This is useful for reusing group definitions across state machines.
+   *
+   * @param newName - Optional new name for the copied group
+   * @param targetFluentState - The target FluentState instance to create the copy in
+   * @param copyChildren - Whether to also copy child groups (default: false)
+   * @returns The newly created copy of this group
+   */
+  clone(newName: string | undefined = undefined, targetFluentState: FluentState = this.fluentState, copyChildren: boolean = false): TransitionGroup {
+    // Use the current name if no new name is provided
+    const name = newName || this.name;
+
+    // Create a new group in the target FluentState
+    const newGroup = targetFluentState.createGroup(name);
+
+    // Copy configuration
+    newGroup.withConfig(this.config);
+    newGroup.enabled = this.enabled;
+    newGroup.preventManualTransitions = this.preventManualTransitions;
+
+    if (this.enablePredicate) {
+      newGroup.setEnablePredicate(this.enablePredicate);
+    }
+
+    // Copy transitions
+    this.transitions.forEach((toMap, fromState) => {
+      toMap.forEach((config, toState) => {
+        // Ensure the states exist in the target FluentState
+        if (!targetFluentState.has(fromState)) {
+          targetFluentState._addState(fromState);
+        }
+        if (!targetFluentState.has(toState)) {
+          targetFluentState._addState(toState);
+        }
+
+        // Add the transition with its tags
+        const tags = this.getTagsForTransition(fromState, toState);
+        newGroup.addTransition(fromState, toState, { ...config }, tags);
+      });
+    });
+
+    // Copy event handlers
+    this.transitionHandlers.forEach((handler) => newGroup.onTransition(handler));
+    this.enableHandlers.forEach((handler) => newGroup.onEnable(handler));
+    this.disableHandlers.forEach((handler) => newGroup.onDisable(handler));
+
+    // Copy middlewares
+    this.middlewares.forEach((middleware) => newGroup.middleware(middleware));
+
+    // Recursively copy children if requested
+    if (copyChildren) {
+      this.getChildGroups().forEach((childGroup) => {
+        const newChildGroup = childGroup.clone(undefined, targetFluentState, true);
+        newChildGroup.setParent(newGroup);
+      });
+    }
+
+    return newGroup;
+  }
+
+  /**
+   * Applies a composition pattern to this group.
+   * This allows reusing predefined group configurations and transitions.
+   *
+   * @param compositionGroup - The group to compose with this group
+   * @param options - Options for how to apply the composition
+   * @returns This group instance for chaining
+   */
+  compose(
+    compositionGroup: TransitionGroup,
+    options: {
+      mergeConfig?: boolean;
+      copyTransitions?: boolean;
+      copyEventHandlers?: boolean;
+      copyMiddlewares?: boolean;
+    } = {
+      mergeConfig: true,
+      copyTransitions: true,
+      copyEventHandlers: false,
+      copyMiddlewares: false,
+    },
+  ): TransitionGroup {
+    // Merge configuration if requested
+    if (options.mergeConfig) {
+      // Only merge properties that don't already exist
+      if (this.config.priority === undefined && compositionGroup.config.priority !== undefined) {
+        this.config.priority = compositionGroup.config.priority;
+      }
+
+      if (this.config.debounce === undefined && compositionGroup.config.debounce !== undefined) {
+        this.config.debounce = compositionGroup.config.debounce;
+      }
+
+      if (compositionGroup.config.retryConfig && !this.config.retryConfig) {
+        this.config.retryConfig = { ...compositionGroup.config.retryConfig };
+      } else if (compositionGroup.config.retryConfig && this.config.retryConfig) {
+        if (this.config.retryConfig.maxAttempts === undefined && compositionGroup.config.retryConfig.maxAttempts !== undefined) {
+          this.config.retryConfig.maxAttempts = compositionGroup.config.retryConfig.maxAttempts;
+        }
+
+        if (this.config.retryConfig.delay === undefined && compositionGroup.config.retryConfig.delay !== undefined) {
+          this.config.retryConfig.delay = compositionGroup.config.retryConfig.delay;
+        }
+      }
+    }
+
+    // Copy transitions if requested
+    if (options.copyTransitions) {
+      compositionGroup.transitions.forEach((toMap, fromState) => {
+        toMap.forEach((config, toState) => {
+          // Only add if the transition doesn't already exist
+          if (!this.hasTransition(fromState, toState)) {
+            // Ensure the states exist in this FluentState
+            if (!this.fluentState.has(fromState)) {
+              this.fluentState._addState(fromState);
+            }
+            if (!this.fluentState.has(toState)) {
+              this.fluentState._addState(toState);
+            }
+
+            // Add the transition with its tags
+            const tags = compositionGroup.getTagsForTransition(fromState, toState);
+            this.addTransition(fromState, toState, { ...config }, tags);
+          }
+        });
+      });
+    }
+
+    // Copy event handlers if requested
+    if (options.copyEventHandlers) {
+      compositionGroup.transitionHandlers.forEach((handler) => this.onTransition(handler));
+      compositionGroup.enableHandlers.forEach((handler) => this.onEnable(handler));
+      compositionGroup.disableHandlers.forEach((handler) => this.onDisable(handler));
+    }
+
+    // Copy middlewares if requested
+    if (options.copyMiddlewares) {
+      compositionGroup.middlewares.forEach((middleware) => this.middleware(middleware));
+    }
+
+    return this;
   }
 }
 

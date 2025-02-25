@@ -242,4 +242,5 @@ export interface SerializedTransitionGroup {
     tags?: string[]; // Optional tags for categorizing transitions
   }>;
   parentGroup?: string; // Name of the parent group for configuration inheritance
+  childGroups?: string[]; // Names of child groups for hierarchical organization
 }

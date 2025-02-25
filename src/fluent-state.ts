@@ -615,25 +615,47 @@ export class FluentState {
       replaceExisting?: boolean;
     } = {},
   ): FluentState {
-    groups.forEach((serialized) => {
+    // First pass: Create all groups without setting up parent-child relationships
+    const createdGroups = new Map<string, TransitionGroup>();
+
+    for (const serialized of groups) {
       const fullName = serialized.namespace ? `${serialized.namespace}:${serialized.name}` : serialized.name;
 
-      // Check if the group already exists
-      if (this.groups.has(fullName)) {
-        if (options.skipExisting) {
-          return; // Skip this group
-        } else if (options.replaceExisting) {
-          this.removeGroup(fullName); // Remove existing group
-        } else {
-          throw new StateError(`Group with name "${fullName}" already exists`);
-        }
+      // Skip if the group already exists and skipExisting is true
+      if (this.groups.has(fullName) && options.skipExisting) {
+        continue;
       }
 
-      // Create the group from the serialized configuration
-      // Use Object.prototype.hasOwnProperty for safe property access
-      const groupConditionMap = Object.prototype.hasOwnProperty.call(conditionMaps, fullName) ? conditionMaps[fullName] : {};
-      this.createGroupFromConfig(serialized, groupConditionMap);
-    });
+      // Remove existing group if replaceExisting is true
+      if (this.groups.has(fullName) && options.replaceExisting) {
+        this.removeGroup(fullName);
+      }
+
+      // Create the group
+      const group = this.createGroup(fullName);
+      const groupConditionMap = conditionMaps[fullName] || {};
+      group.deserialize(serialized, groupConditionMap);
+
+      createdGroups.set(fullName, group);
+    }
+
+    // Second pass: Set up parent-child relationships
+    for (const serialized of groups) {
+      const fullName = serialized.namespace ? `${serialized.namespace}:${serialized.name}` : serialized.name;
+
+      // Skip if the group wasn't created in the first pass
+      if (!createdGroups.has(fullName)) {
+        continue;
+      }
+
+      const group = createdGroups.get(fullName)!;
+
+      // Set parent if specified
+      if (serialized.parentGroup && createdGroups.has(serialized.parentGroup)) {
+        const parentGroup = createdGroups.get(serialized.parentGroup)!;
+        group.setParent(parentGroup);
+      }
+    }
 
     return this;
   }

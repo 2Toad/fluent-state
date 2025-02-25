@@ -13,6 +13,10 @@ Transition Groups offer several key benefits:
 5. **Dynamic Configuration**: Define configuration values as functions that adapt to application state at runtime
 6. **Tagging**: Further organize transitions within groups using tags
 7. **Runtime Control**: Selectively activate or deactivate parts of your state machine
+8. **Nested Groups**: Build complex hierarchies with multiple levels of parent-child relationships
+9. **Cascading Operations**: Enable or disable entire branches of your state machine with a single operation
+10. **Group Composition**: Reuse transition patterns and configurations across different groups
+11. **Group Cloning**: Create copies of groups with their configurations and transitions
 
 ## Features
 
@@ -167,7 +171,128 @@ const grandchildGroup = childGroup.createChildGroup("special-payment");
 
 When a transition's configuration is evaluated, the most specific (nearest ancestor's) value is used.
 
-### 5. Dynamic Configuration
+### 5. Hierarchy Navigation and Management
+
+Transition Groups provide powerful methods for navigating and managing hierarchical relationships:
+
+```typescript
+// Get all descendants (children, grandchildren, etc.)
+const allDescendants = parentGroup.getAllDescendants();
+
+// Get the full hierarchy path from root to current group
+const path = grandchildGroup.getHierarchyPath();
+// Returns [parentGroup, childGroup, grandchildGroup]
+
+// Get the root group (topmost ancestor)
+const root = grandchildGroup.getRoot();
+// Returns parentGroup
+
+// Get sibling groups (groups that share the same parent)
+const siblings = childGroup.getSiblings();
+// Returns other children of parentGroup
+```
+
+#### Cascading Operations
+
+Operations like enabling and disabling can cascade through the hierarchy:
+
+```typescript
+// Enable a group and all its descendants
+parentGroup.enable({ cascade: true });
+
+// Disable a group and all its descendants
+parentGroup.disable({ cascade: true });
+
+// Temporarily disable a group and all its descendants
+parentGroup.disableTemporarily(5000, undefined, { 
+  cascade: true,
+  preventManualTransitions: true 
+});
+```
+
+When cascading is enabled, the operation applies to the target group and all its descendants. This is useful for enabling or disabling entire branches of your state machine at once.
+
+#### Group Cloning
+
+Groups can be cloned to create copies with the same configuration and transitions:
+
+```typescript
+// Clone a group to the same state machine
+const clonedGroup = group.clone("new-name");
+
+// Clone a group to a different state machine
+const otherFsm = new FluentState();
+const clonedToOther = group.clone("group-copy", otherFsm);
+
+// Clone a group with its entire hierarchy
+const clonedWithChildren = group.clone("group-with-children", undefined, true);
+```
+
+Cloning is useful for:
+1. Creating variations of existing groups
+2. Transferring group configurations between state machines
+3. Creating templates that can be reused
+
+#### Group Composition
+
+The composition pattern allows you to reuse predefined group configurations and transitions:
+
+```typescript
+// Create a template group with common error handling
+const errorHandlingTemplate = fluentState.createGroup("error-template")
+  .withConfig({
+    priority: 5,
+    retryConfig: {
+      maxAttempts: 3,
+      delay: 100
+    }
+  });
+
+// Add common error transitions
+errorHandlingTemplate
+  .from("error")
+  .to("retry", {
+    condition: (_, context) => context.canRetry,
+    targetState: "retry"
+  })
+  .or("fail", {
+    condition: () => true,
+    targetState: "fail"
+  });
+
+// Create a new group that composes with the template
+const paymentGroup = fluentState.createGroup("payment");
+
+// Compose with the template
+paymentGroup.compose(errorHandlingTemplate, {
+  mergeConfig: true,       // Inherit configuration
+  copyTransitions: true,   // Copy transitions
+  copyEventHandlers: false, // Don't copy event handlers
+  copyMiddlewares: false   // Don't copy middlewares
+});
+
+// Add payment-specific transitions
+paymentGroup
+  .from("pending")
+  .to("success", {
+    condition: (_, context) => context.paymentApproved,
+    targetState: "success"
+  })
+  .or("error", {
+    condition: (_, context) => context.paymentFailed,
+    targetState: "error"
+  });
+```
+
+Composition options:
+- `mergeConfig`: Whether to merge configuration from the template
+- `copyTransitions`: Whether to copy transitions from the template
+- `copyEventHandlers`: Whether to copy event handlers from the template
+- `copyMiddlewares`: Whether to copy middlewares from the template
+
+When merging configuration, existing values in the target group are preserved, and only missing values are copied from the template.
+
+### 6. Dynamic Configuration
 
 Transition Groups support dynamic configuration values that are evaluated at runtime based on context:
 
@@ -227,7 +352,7 @@ childGroup.withConfig({
 
 Note that dynamic configuration functions are not serialized. When serializing a group with dynamic configuration, only static values will be included.
 
-### 6. Transition Tagging
+### 7. Transition Tagging
 
 Tags provide an additional level of organization within groups:
 
@@ -259,7 +384,7 @@ const tags = group.getTagsForTransition("review", "approved");
 group.removeTagFromTransition("review", "approved", "important");
 ```
 
-### 7. Enabling and Disabling Groups
+### 8. Enabling and Disabling Groups
 
 Transition Groups can be enabled or disabled to control which transitions are active:
 
@@ -333,7 +458,7 @@ This means that even if a group would be disabled by a predicate for a given con
 
 The predicate function is evaluated at runtime when checking if a group is enabled. This allows for dynamic, context-aware enabling and disabling of groups.
 
-### 8. Event Handling
+### 9. Event Handling
 
 Transition Groups support a powerful event handling system that lets you respond to transitions, enabling, and disabling events. All event handlers provide a fluent API for easy chaining.
 
@@ -444,7 +569,7 @@ betaFeaturesGroup.onDisable((preventManual) => {
 });
 ```
 
-### 9. Group-Level Middleware
+### 10. Group-Level Middleware
 
 Transition Groups support middleware functions that can intercept, validate, or modify transitions before they occur. Middleware provides a powerful mechanism for implementing cross-cutting concerns like validation, logging, authorization, or data transformation.
 
@@ -621,7 +746,7 @@ const dataEnrichmentMiddleware = (fromState, toState, proceed, context) => {
 allGroups.forEach(group => group.middleware(dataEnrichmentMiddleware));
 ```
 
-### 10. Automatic Cleanup
+### 11. Automatic Cleanup
 
 When a state is removed from the state machine, all transitions involving that state are automatically removed from all groups:
 
@@ -640,7 +765,7 @@ group.hasTransition("review", "b"); // false
 
 This cleanup also includes removing tags associated with the removed transitions.
 
-### 11. Serialization and Deserialization
+### 12. Serialization and Deserialization
 
 Transition Groups can be serialized for storage or transmission:
 
@@ -674,9 +799,36 @@ fluentState.importGroups(
 );
 ```
 
+The serialization process preserves the entire group hierarchy, including parent-child relationships. When importing groups, the hierarchy is reconstructed with all parent-child relationships restored.
+
+```typescript
+// Export a hierarchy of groups
+const parentGroup = fluentState.createGroup("parent");
+const childGroup = parentGroup.createChildGroup("child");
+const grandchildGroup = childGroup.createChildGroup("grandchild");
+
+// Export all groups including their hierarchy
+const serializedGroups = fluentState.exportGroups();
+
+// Create a new state machine
+const newFluentState = new FluentState();
+
+// Import the groups with their hierarchy
+newFluentState.importGroups(serializedGroups, conditionMaps);
+
+// The hierarchy is preserved
+const newParent = newFluentState.group("parent");
+const newChild = newFluentState.group("child");
+const newGrandchild = newFluentState.group("grandchild");
+
+// Parent-child relationships are restored
+console.log(newChild.getParent() === newParent); // true
+console.log(newGrandchild.getParent() === newChild); // true
+```
+
 Note that since functions can't be serialized, you need to provide condition functions separately when deserializing.
 
-### 12. Integration with Transition History
+### 13. Integration with Transition History
 
 Transition Groups are fully integrated with FluentState's transition history feature, allowing you to track and analyze transitions by group:
 
