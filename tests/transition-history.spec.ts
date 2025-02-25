@@ -8,7 +8,6 @@ describe("Transition History", () => {
     fluentState.clear();
     // @ts-ignore - Resetting private property for testing
     fluentState.historyEnabled = false;
-    // @ts-ignore - Resetting property for testing
     fluentState.history = undefined;
   });
 
