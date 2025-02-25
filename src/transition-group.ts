@@ -1,6 +1,13 @@
 import { AutoTransitionConfig, SerializedTransitionGroup } from "./types";
 import { FluentState } from "./fluent-state";
 
+// Define event handler types
+export type TransitionHandler = (fromState: string, toState: string, context?: unknown) => void;
+export type EnableHandler = (context?: unknown) => void;
+export type DisableHandler = (preventManualTransitions: boolean, context?: unknown) => void;
+// Define group middleware type
+export type GroupTransitionMiddleware = (fromState: string, toState: string, proceed: () => void, context?: unknown) => void | Promise<void>;
+
 /**
  * Configuration options for a transition group.
  */
@@ -56,6 +63,27 @@ export class TransitionGroup {
 
   /** Timeout for temporary disabling */
   private temporaryDisableTimeout?: NodeJS.Timeout;
+
+  /** Event handlers for transitions in this group */
+  private transitionHandlers: TransitionHandler[] = [];
+
+  /** One-time event handlers for transitions in this group */
+  private onceTransitionHandlers: TransitionHandler[] = [];
+
+  /** Event handlers for when this group is enabled */
+  private enableHandlers: EnableHandler[] = [];
+
+  /** One-time event handlers for when this group is enabled */
+  private onceEnableHandlers: EnableHandler[] = [];
+
+  /** Event handlers for when this group is disabled */
+  private disableHandlers: DisableHandler[] = [];
+
+  /** One-time event handlers for when this group is disabled */
+  private onceDisableHandlers: DisableHandler[] = [];
+
+  /** Middleware functions for intercepting transitions in this group */
+  private middlewares: GroupTransitionMiddleware[] = [];
 
   /**
    * Creates a new TransitionGroup.
@@ -468,6 +496,7 @@ export class TransitionGroup {
    * @returns This group instance for chaining
    */
   enable(): TransitionGroup {
+    const wasDisabled = !this.enabled;
     this.enabled = true;
     this.preventManualTransitions = false; // Reset when enabling
 
@@ -475,6 +504,11 @@ export class TransitionGroup {
     if (this.temporaryDisableTimeout) {
       clearTimeout(this.temporaryDisableTimeout);
       this.temporaryDisableTimeout = undefined;
+    }
+
+    // Trigger enable event handlers if the state actually changed
+    if (wasDisabled) {
+      this._triggerEnableHandlers();
     }
 
     return this;
@@ -487,6 +521,7 @@ export class TransitionGroup {
    * @returns This group instance for chaining
    */
   disable(options?: { preventManualTransitions?: boolean }): TransitionGroup {
+    const wasEnabled = this.enabled;
     this.enabled = false;
 
     // Set prevention of manual transitions if specified
@@ -498,6 +533,11 @@ export class TransitionGroup {
     if (this.temporaryDisableTimeout) {
       clearTimeout(this.temporaryDisableTimeout);
       this.temporaryDisableTimeout = undefined;
+    }
+
+    // Trigger disable event handlers if the state actually changed
+    if (wasEnabled) {
+      this._triggerDisableHandlers(this.preventManualTransitions);
     }
 
     return this;
@@ -756,6 +796,296 @@ export class TransitionGroup {
     });
 
     return this;
+  }
+
+  /**
+   * Registers a handler function to be called when a transition occurs in this group.
+   *
+   * @param handler - Function to call when a transition occurs
+   * @returns This group instance for chaining
+   */
+  onTransition(handler: TransitionHandler): TransitionGroup {
+    this.transitionHandlers.push(handler);
+    return this;
+  }
+
+  /**
+   * Registers a one-time handler function to be called the next time a transition occurs in this group.
+   * The handler is automatically removed after it's called once.
+   *
+   * @param handler - Function to call when a transition occurs
+   * @returns This group instance for chaining
+   */
+  onceTransition(handler: TransitionHandler): TransitionGroup {
+    this.onceTransitionHandlers.push(handler);
+    return this;
+  }
+
+  /**
+   * Removes a previously registered transition handler.
+   *
+   * @param handler - The handler function to remove
+   * @returns This group instance for chaining
+   */
+  offTransition(handler: TransitionHandler): TransitionGroup {
+    // Remove from regular handlers
+    const index = this.transitionHandlers.indexOf(handler);
+    if (index !== -1) {
+      this.transitionHandlers.splice(index, 1);
+    }
+
+    // Remove from once handlers if present
+    const onceIndex = this.onceTransitionHandlers.indexOf(handler);
+    if (onceIndex !== -1) {
+      this.onceTransitionHandlers.splice(onceIndex, 1);
+    }
+
+    return this;
+  }
+
+  /**
+   * Registers a handler function to be called when this group is enabled.
+   *
+   * @param handler - Function to call when the group is enabled
+   * @returns This group instance for chaining
+   */
+  onEnable(handler: EnableHandler): TransitionGroup {
+    this.enableHandlers.push(handler);
+    return this;
+  }
+
+  /**
+   * Registers a one-time handler function to be called the next time this group is enabled.
+   * The handler is automatically removed after it's called once.
+   *
+   * @param handler - Function to call when the group is enabled
+   * @returns This group instance for chaining
+   */
+  onceEnable(handler: EnableHandler): TransitionGroup {
+    this.onceEnableHandlers.push(handler);
+    return this;
+  }
+
+  /**
+   * Removes a previously registered enable handler.
+   *
+   * @param handler - The handler function to remove
+   * @returns This group instance for chaining
+   */
+  offEnable(handler: EnableHandler): TransitionGroup {
+    // Remove from regular handlers
+    const index = this.enableHandlers.indexOf(handler);
+    if (index !== -1) {
+      this.enableHandlers.splice(index, 1);
+    }
+
+    // Remove from once handlers if present
+    const onceIndex = this.onceEnableHandlers.indexOf(handler);
+    if (onceIndex !== -1) {
+      this.onceEnableHandlers.splice(onceIndex, 1);
+    }
+
+    return this;
+  }
+
+  /**
+   * Registers a handler function to be called when this group is disabled.
+   *
+   * @param handler - Function to call when the group is disabled
+   * @returns This group instance for chaining
+   */
+  onDisable(handler: DisableHandler): TransitionGroup {
+    this.disableHandlers.push(handler);
+    return this;
+  }
+
+  /**
+   * Registers a one-time handler function to be called the next time this group is disabled.
+   * The handler is automatically removed after it's called once.
+   *
+   * @param handler - Function to call when the group is disabled
+   * @returns This group instance for chaining
+   */
+  onceDisable(handler: DisableHandler): TransitionGroup {
+    this.onceDisableHandlers.push(handler);
+    return this;
+  }
+
+  /**
+   * Removes a previously registered disable handler.
+   *
+   * @param handler - The handler function to remove
+   * @returns This group instance for chaining
+   */
+  offDisable(handler: DisableHandler): TransitionGroup {
+    // Remove from regular handlers
+    const index = this.disableHandlers.indexOf(handler);
+    if (index !== -1) {
+      this.disableHandlers.splice(index, 1);
+    }
+
+    // Remove from once handlers if present
+    const onceIndex = this.onceDisableHandlers.indexOf(handler);
+    if (onceIndex !== -1) {
+      this.onceDisableHandlers.splice(onceIndex, 1);
+    }
+
+    return this;
+  }
+
+  /**
+   * Triggers transition event handlers for a specific transition.
+   * This is intended to be called by the FluentState instance when a transition in this group occurs.
+   *
+   * @param fromState - The source state of the transition
+   * @param toState - The target state of the transition
+   * @param context - Optional context for the transition
+   */
+  _triggerTransitionHandlers(fromState: string, toState: string, context?: unknown): void {
+    // Execute regular handlers
+    for (const handler of this.transitionHandlers) {
+      handler(fromState, toState, context);
+    }
+
+    // Execute and remove one-time handlers
+    const onceHandlers = [...this.onceTransitionHandlers];
+    this.onceTransitionHandlers = [];
+    for (const handler of onceHandlers) {
+      handler(fromState, toState, context);
+    }
+
+    // Bubble event to parent group if exists
+    if (this.parentGroup) {
+      this.parentGroup._triggerTransitionHandlers(fromState, toState, context);
+    }
+  }
+
+  /**
+   * Triggers enable event handlers.
+   * This is called internally when the group is enabled.
+   *
+   * @param context - Optional context for the event
+   */
+  private _triggerEnableHandlers(context?: unknown): void {
+    // Execute regular handlers
+    for (const handler of this.enableHandlers) {
+      handler(context);
+    }
+
+    // Execute and remove one-time handlers
+    const onceHandlers = [...this.onceEnableHandlers];
+    this.onceEnableHandlers = [];
+    for (const handler of onceHandlers) {
+      handler(context);
+    }
+
+    // Bubble event to parent group if exists
+    if (this.parentGroup) {
+      this.parentGroup._triggerEnableHandlers(context);
+    }
+  }
+
+  /**
+   * Triggers disable event handlers.
+   * This is called internally when the group is disabled.
+   *
+   * @param preventManualTransitions - Whether manual transitions are prevented
+   * @param context - Optional context for the event
+   */
+  private _triggerDisableHandlers(preventManualTransitions: boolean, context?: unknown): void {
+    // Execute regular handlers
+    for (const handler of this.disableHandlers) {
+      handler(preventManualTransitions, context);
+    }
+
+    // Execute and remove one-time handlers
+    const onceHandlers = [...this.onceDisableHandlers];
+    this.onceDisableHandlers = [];
+    for (const handler of onceHandlers) {
+      handler(preventManualTransitions, context);
+    }
+
+    // Bubble event to parent group if exists
+    if (this.parentGroup) {
+      this.parentGroup._triggerDisableHandlers(preventManualTransitions, context);
+    }
+  }
+
+  /**
+   * Adds a middleware function that can intercept and control transitions within this group.
+   * Middleware functions are executed in the order they are added.
+   * A middleware must call the proceed function to allow the transition to continue.
+   * If proceed is not called, the transition is blocked.
+   *
+   * @param middleware - Function that receives source state, target state, context, and a proceed function
+   * @returns This group instance for chaining
+   *
+   * @example
+   * ```typescript
+   * group.middleware((from, to, proceed, context) => {
+   *   if (to === 'sensitive' && !context?.isAuthenticated) {
+   *     // Block the transition by not calling proceed
+   *     console.log('Authentication required');
+   *   } else {
+   *     // Allow the transition to continue
+   *     proceed();
+   *   }
+   * });
+   * ```
+   */
+  middleware(middleware: GroupTransitionMiddleware): TransitionGroup {
+    this.middlewares.push(middleware);
+    return this;
+  }
+
+  /**
+   * Removes a previously registered middleware function.
+   *
+   * @param middleware - The middleware function to remove
+   * @returns This group instance for chaining
+   */
+  removeMiddleware(middleware: GroupTransitionMiddleware): TransitionGroup {
+    const index = this.middlewares.indexOf(middleware);
+    if (index !== -1) {
+      this.middlewares.splice(index, 1);
+    }
+    return this;
+  }
+
+  /**
+   * Runs all middleware functions for this group.
+   * This is called internally when a transition within this group is being evaluated.
+   *
+   * @param fromState - The source state name
+   * @param toState - The target state name
+   * @param context - Optional context for the transition
+   * @returns Promise that resolves to true if all middleware allow the transition, false otherwise
+   * @internal
+   */
+  async _runMiddleware(fromState: string, toState: string, context?: unknown): Promise<boolean> {
+    if (this.middlewares.length === 0) return true;
+
+    for (const middleware of this.middlewares) {
+      let shouldProceed = false;
+      try {
+        await middleware(
+          fromState,
+          toState,
+          () => {
+            shouldProceed = true;
+          },
+          context,
+        );
+      } catch (error) {
+        console.error(`Error in group "${this.getFullName()}" middleware:`, error);
+        return false; // Block transition on error for safety
+      }
+
+      if (!shouldProceed) {
+        return false; // Middleware blocked the transition
+      }
+    }
+    return true;
   }
 }
 

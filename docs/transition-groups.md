@@ -333,7 +333,295 @@ This means that even if a group would be disabled by a predicate for a given con
 
 The predicate function is evaluated at runtime when checking if a group is enabled. This allows for dynamic, context-aware enabling and disabling of groups.
 
-### 8. Automatic Cleanup
+### 8. Event Handling
+
+Transition Groups support a powerful event handling system that lets you respond to transitions, enabling, and disabling events. All event handlers provide a fluent API for easy chaining.
+
+#### Transition Events
+
+You can register handlers to be notified when transitions occur in a group:
+
+```typescript
+// Register a handler for transitions
+group.onTransition((fromState, toState, context) => {
+  console.log(`Transition from ${fromState} to ${toState}`);
+  console.log('Context:', context);
+});
+
+// Register a one-time handler (removed after first call)
+group.onceTransition((fromState, toState, context) => {
+  console.log(`First transition from ${fromState} to ${toState}`);
+});
+
+// Remove a previously registered handler
+group.offTransition(handlerFunction);
+```
+
+#### Enable/Disable Events
+
+You can also register handlers for when groups are enabled or disabled:
+
+```typescript
+// Register enable handler
+group.onEnable((context) => {
+  console.log('Group enabled with context:', context);
+});
+
+// Register disable handler
+group.onDisable((preventManualTransitions, context) => {
+  console.log(`Group disabled (preventManualTransitions=${preventManualTransitions})`);
+  console.log('Context:', context);
+});
+
+// Register one-time handlers
+group.onceEnable(handler);
+group.onceDisable(handler);
+
+// Remove handlers
+group.offEnable(enableHandler);
+group.offDisable(disableHandler);
+```
+
+#### Event Bubbling
+
+Events automatically bubble up to parent groups, allowing you to handle events at different levels of your group hierarchy:
+
+```typescript
+// Create parent and child groups
+const parentGroup = fs.createGroup("parent");
+const childGroup = parentGroup.createChildGroup("child");
+
+// Register handlers at each level
+parentGroup.onTransition((from, to) => {
+  console.log(`Parent saw transition from ${from} to ${to}`);
+});
+
+childGroup.onTransition((from, to) => {
+  console.log(`Child saw transition from ${from} to ${to}`);
+});
+
+// When a transition occurs in the child group, both handlers will fire
+// Child handlers fire first, then parent handlers
+```
+
+This event bubbling applies to all types of events (transitions, enabling, disabling), allowing for centralized event handling in parent groups.
+
+#### Practical Use Cases
+
+Event handlers are useful for a variety of purposes:
+
+1. **Logging**: Track state changes throughout your application
+2. **Analytics**: Send events to analytics services when important transitions occur
+3. **UI Updates**: Trigger UI refreshes when certain transitions happen
+4. **Syncing**: Keep external systems in sync with your state machine
+5. **Notifications**: Alert users or systems when specific states are reached
+
+```typescript
+// Example: Tracking user flow in an analytics system
+const checkoutGroup = fs.createGroup("checkout");
+
+checkoutGroup.onTransition((from, to, context) => {
+  if (to === "purchased") {
+    analytics.track("Purchase Completed", {
+      orderId: context.orderId,
+      amount: context.totalAmount,
+      previousStep: from
+    });
+  }
+});
+
+// Example: Feature flag system events
+const betaFeaturesGroup = fs.createGroup("betaFeatures");
+
+betaFeaturesGroup.onEnable(() => {
+  logger.info("Beta features enabled");
+  notifyAdmins("Beta features are now active");
+});
+
+betaFeaturesGroup.onDisable((preventManual) => {
+  logger.info(`Beta features disabled (manual transitions ${preventManual ? 'prevented' : 'allowed'})`);
+  notifyAdmins("Beta features have been deactivated");
+});
+```
+
+### 9. Group-Level Middleware
+
+Transition Groups support middleware functions that can intercept, validate, or modify transitions before they occur. Middleware provides a powerful mechanism for implementing cross-cutting concerns like validation, logging, authorization, or data transformation.
+
+Unlike event handlers that are called after a transition occurs, middleware runs before the transition and can allow, block, or modify the transition.
+
+#### Adding and Removing Middleware
+
+```typescript
+// Add middleware to a group
+group.middleware((fromState, toState, proceed, context) => {
+  // Validate the transition
+  if (shouldAllowTransition(fromState, toState, context)) {
+    // Allow the transition to continue
+    proceed();
+  } else {
+    // Block the transition by not calling proceed()
+    console.log(`Blocked transition from ${fromState} to ${toState}`);
+  }
+});
+
+// Add another middleware - these run in the order they're added
+group.middleware((fromState, toState, proceed, context) => {
+  // Log all transitions
+  console.log(`Transition attempt: ${fromState} -> ${toState}`);
+  // Allow the transition
+  proceed();
+});
+
+// Remove middleware
+group.removeMiddleware(middlewareFunction);
+```
+
+#### Middleware Execution Flow
+
+Middleware functions are executed in the order they are added. Each middleware must explicitly call the `proceed()` function to allow the transition to continue to the next middleware or to execute the transition if it's the last middleware in the chain.
+
+If any middleware doesn't call `proceed()`, the transition is blocked, and subsequent middleware in the chain will not run.
+
+```typescript
+// Detailed middleware execution flow
+group.middleware((fromState, toState, proceed, context) => {
+  console.log("First middleware running");
+  
+  // Asynchronous operations are supported
+  setTimeout(() => {
+    console.log("After async operation");
+    proceed(); // Continue to next middleware
+  }, 100);
+});
+
+group.middleware((fromState, toState, proceed, context) => {
+  console.log("Second middleware running");
+  // If first middleware doesn't call proceed(), this won't run
+  proceed(); // Continue to the transition
+});
+
+// If all middleware call proceed(), the transition executes
+```
+
+#### Modifying Context Data
+
+Middleware can modify the context data passed to transitions, allowing for data transformation or enrichment:
+
+```typescript
+// Middleware that modifies context
+group.middleware((fromState, toState, proceed, context) => {
+  if (context) {
+    // Add timestamp to all transitions
+    context.transitionTimestamp = Date.now();
+    
+    // Add tracking info
+    context.transitionInfo = {
+      from: fromState,
+      to: toState,
+      user: getCurrentUser()
+    };
+  }
+  proceed();
+});
+```
+
+#### Error Handling
+
+Errors in middleware are caught and handled gracefully. By default, if a middleware throws an error, the transition is blocked for safety:
+
+```typescript
+// Error handling in middleware
+group.middleware((fromState, toState, proceed, context) => {
+  try {
+    // Some operation that might throw
+    const result = validateTransition(fromState, toState, context);
+    if (result.valid) {
+      proceed();
+    }
+  } catch (error) {
+    console.error("Error in middleware:", error);
+    // Not calling proceed() blocks the transition
+  }
+});
+```
+
+#### Asynchronous Middleware
+
+Middleware functions can be asynchronous, allowing for API calls, database lookups, or other async operations:
+
+```typescript
+// Async middleware with async/await
+group.middleware(async (fromState, toState, proceed, context) => {
+  try {
+    // Asynchronous operation
+    const isAuthorized = await checkPermission(context.userId, toState);
+    
+    if (isAuthorized) {
+      proceed();
+    } else {
+      logAuthFailure(context.userId, fromState, toState);
+      // Not calling proceed() blocks the transition
+    }
+  } catch (error) {
+    console.error("Authorization check failed:", error);
+    // Not calling proceed() blocks the transition
+  }
+});
+```
+
+#### Middleware vs. Event Handlers
+
+It's important to understand the difference between middleware and event handlers:
+
+1. **Timing**: Middleware runs *before* a transition occurs and can prevent it. Event handlers run *after* a transition has already occurred.
+2. **Control Flow**: Middleware can block transitions by not calling `proceed()`. Event handlers can't prevent a transition that has already happened.
+3. **Chaining**: Middleware execution is sequential and conditional on previous middleware allowing the transition. All event handlers are always executed for a transition.
+4. **Purpose**: Middleware is for validation, authorization, or modifying transitions. Event handlers are for responding to transitions after they occur.
+
+#### Practical Use Cases
+
+Middleware is useful for various scenarios:
+
+1. **Validation**: Ensure transitions meet certain criteria before allowing them
+2. **Authorization**: Check if the user has permission to make a transition
+3. **Rate Limiting**: Prevent too many transitions in a short time
+4. **Logging**: Record details about transition attempts
+5. **Data Transformation**: Modify or augment context data for transitions
+6. **Integration**: Connect with external systems before state changes
+
+```typescript
+// Example: Authorization middleware
+const authMiddleware = (fromState, toState, proceed, context) => {
+  // Only allow admin users to transition to sensitive states
+  if (toState === "admin-panel" && context?.user?.role !== "admin") {
+    console.warn(`User ${context?.user?.id} attempted unauthorized access to admin panel`);
+    return; // Block by not calling proceed()
+  }
+  
+  // Allow the transition for authorized users
+  proceed();
+};
+
+// Add the middleware to the group
+adminGroup.middleware(authMiddleware);
+
+// Example: Data transformation middleware
+const dataEnrichmentMiddleware = (fromState, toState, proceed, context) => {
+  // Enrich context with additional data
+  if (context) {
+    context.previousState = fromState;
+    context.transitionTimestamp = Date.now();
+    context.environment = process.env.NODE_ENV;
+  }
+  proceed();
+};
+
+// Add the middleware to all groups
+allGroups.forEach(group => group.middleware(dataEnrichmentMiddleware));
+```
+
+### 10. Automatic Cleanup
 
 When a state is removed from the state machine, all transitions involving that state are automatically removed from all groups:
 
@@ -352,7 +640,7 @@ group.hasTransition("review", "b"); // false
 
 This cleanup also includes removing tags associated with the removed transitions.
 
-### 9. Serialization and Deserialization
+### 11. Serialization and Deserialization
 
 Transition Groups can be serialized for storage or transmission:
 

@@ -161,68 +161,91 @@ export class FluentState {
   }
 
   /**
-   * Transitions to a new state.
+   * Attempts to transition to a new state.
    *
-   * Lifecycle events within the transition process occur in this order:
-   * BeforeTransition -> FailedTransition -> AfterTransition -> State-specific handlers
-   *
-   * @param names - The name(s) of the state(s) to transition to. If multiple are provided, one is chosen randomly.
-   * @returns A promise that resolves to true if the transition was successful, false otherwise.
+   * @param targetState - The name of the state to transition to
+   * @param context - Optional context object that can be used in transition logic
+   * @returns A Promise that resolves to true if the transition was successful, false otherwise
    */
-  async transition(...names: string[]): Promise<boolean> {
-    if (!names.length) {
+  async transition(targetState?: string, context?: unknown): Promise<boolean> {
+    // Check if target state is provided
+    if (targetState === undefined) {
       throw new TransitionError(`No target state specified. Available states: ${Array.from(this.states.keys()).join(", ")}`);
     }
 
-    const currentState = this.state;
-
-    // If there is no current state, return false instead of throwing an error
-    if (!currentState) {
+    // Can't transition if there's no current state
+    if (!this.state) {
       return false;
     }
 
-    const nextStateName = names.length === 1 ? names[0] : names[Math.floor(Math.random() * names.length)];
+    const currentState = this.state;
+    const fromState = currentState.name;
 
-    // This will ensure we can pass the current context to the group evaluations
-    const currentContext = currentState.getContext();
+    // If the state doesn't exist yet, add it
+    if (!this.states.has(targetState)) {
+      this._addState(targetState);
+    }
 
-    // Check if this transition is allowed by all groups that contain it
-    const groupsContainingTransition = Array.from(this.groups.values()).filter((group) => group.hasTransition(currentState.name, nextStateName));
+    // Check if any group blocks the transition
+    for (const group of this.groups.values()) {
+      if (group.hasTransition(fromState, targetState) && !group.isEnabled(context)) {
+        if (!group.allowsManualTransitions(context)) {
+          // Record the failed transition
+          if (this.historyEnabled && this.history) {
+            this.history.recordTransition(currentState, targetState, context, false);
+          }
+          return false;
+        }
+      }
+    }
 
-    // If any groups contain this transition, check if any block manual transitions
-    if (groupsContainingTransition.length > 0) {
-      // Pass the context when checking if manual transitions are allowed
-      const anyGroupBlocksTransition = groupsContainingTransition.some((group) => !group.allowsManualTransitions(currentContext));
+    // Try to perform the transition
+    const toState = this.states.get(targetState);
 
-      if (anyGroupBlocksTransition) {
-        // Record failed transition due to blocked manual transition
+    // Check if the transition is valid
+    if (this.state.can(targetState)) {
+      // Run any middleware that could block the transition
+      if (this.middlewares.length > 0 && !(await this._runMiddlewares(currentState, targetState))) {
+        // Middleware blocked the transition
         if (this.historyEnabled && this.history) {
-          this.history.recordTransition(currentState, nextStateName, currentContext, false);
+          this.history.recordTransition(currentState, targetState, context, false);
         }
         return false;
       }
-    }
 
-    if (!(await this._runMiddlewares(currentState, nextStateName))) {
-      // Record failed transition due to middleware blocking
+      // Find the groups that directly contain this transition
+      const groupsWithTransition = Array.from(this.groups.values()).filter((group) => group.hasTransition(fromState, targetState));
+
+      // Check if any group middleware blocks the transition
+      for (const group of groupsWithTransition) {
+        if (!(await group._runMiddleware(fromState, targetState, context))) {
+          // Group middleware blocked the transition
+          if (this.historyEnabled && this.history) {
+            this.history.recordTransition(currentState, targetState, context, false);
+          }
+          return false;
+        }
+      }
+
+      // Execute the transition with all lifecycle events
+      const result = await this._executeTransition(currentState, toState!);
+
+      // If successful, trigger transition handlers for groups
+      if (result) {
+        // Trigger transition handlers only for groups that directly contain the transition
+        for (const group of groupsWithTransition) {
+          group._triggerTransitionHandlers(fromState, targetState, context);
+        }
+      }
+
+      return result;
+    } else {
+      // Record the failed transition
       if (this.historyEnabled && this.history) {
-        this.history.recordTransition(currentState, nextStateName, currentState.getContext(), false);
+        this.history.recordTransition(currentState, targetState, context, false);
       }
       return false;
     }
-
-    const nextState = this._getState(nextStateName);
-    if (!nextState) {
-      await this.observer.trigger(Lifecycle.FailedTransition, currentState, nextStateName);
-
-      // Record failed transition due to missing state
-      if (this.historyEnabled && this.history) {
-        this.history.recordTransition(currentState, nextStateName, currentState.getContext(), false);
-      }
-      return false;
-    }
-
-    return this._executeTransition(currentState, nextState);
   }
 
   async next(...exclude: string[]): Promise<boolean> {

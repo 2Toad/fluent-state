@@ -291,16 +291,16 @@ Acceptance Criteria:
    - ✅ Support for conditionally enabled groups based on a predicate function
 
 5. Event Handling
-   - Groups can have event handlers attached using a fluent API:
-     - `group.onTransition((from, to) => { /* handler */ })`
-     - `group.onEnable(() => { /* handler */ })`
-     - `group.onDisable(() => { /* handler */ })`
-   - Event handlers receive relevant context about the event (states involved, transition configuration, etc.)
-   - Multiple handlers can be chained: `group.onTransition(handler1).onTransition(handler2)`
-   - Add support for removing event handlers: `group.offTransition(handler)`
-   - Add support for one-time event handlers: `group.onceTransition(handler)`
-   - Support for event bubbling between nested groups
-   - Add group-level middleware that can intercept and modify transitions
+   - ✅ Groups can have event handlers attached using a fluent API:
+     - ✅ `group.onTransition((from, to) => { /* handler */ })`
+     - ✅ `group.onEnable(() => { /* handler */ })`
+     - ✅ `group.onDisable(() => { /* handler */ })`
+   - ✅ Event handlers receive relevant context about the event (states involved, transition configuration, etc.)
+   - ✅ Multiple handlers can be chained: `group.onTransition(handler1).onTransition(handler2)`
+   - ✅ Add support for removing event handlers: `group.offTransition(handler)`
+   - ✅ Add support for one-time event handlers: `group.onceTransition(handler)`
+   - ✅ Support for event bubbling between nested groups
+   - ✅ Add group-level middleware that can intercept and modify transitions
 
 6. Integration with Existing Features
    - Transition groups work seamlessly with the existing transition history feature

@@ -70,38 +70,51 @@ describe("Transition Guard", () => {
   });
 
   it("should correctly influence transitions within a flow", async () => {
-    const log: string[] = [];
-    const addToLog = (item: string): void => {
-      log.push(item);
-    };
+    const fs = new FluentState();
+    // Set up a simple transition flow: start -> middle -> end (with "blocked" as an alternative from middle)
+    fs.from("start").to("middle");
+    fs.from("middle").to("blocked");
+    fs.from("middle").to("end");
+    fs.setState("start");
 
-    const middleware = createTransitionGuard((currentState, nextStateName, proceed) => {
-      addToLog(`Attempting transition: ${currentState?.name || "null"} -> ${nextStateName}`);
-      if (nextStateName !== "blocked") {
-        proceed();
-      } else {
-        addToLog("Transition blocked");
-      }
-    });
+    // Create an array to track transition attempts
+    const transitionAttempts: string[] = [];
 
-    fs.use(middleware);
-    fs.from("start").to("middle").or("blocked").from("middle").to("end");
+    // Use the transition guard plugin to track and potentially block transitions
+    fs.use(
+      createTransitionGuard((currentState, nextState, proceed) => {
+        const attemptMessage = `Attempting transition: ${currentState?.name || "null"} -> ${nextState}`;
+        transitionAttempts.push(attemptMessage);
 
+        // Only block transitions to "blocked" state
+        if (nextState !== "blocked") {
+          proceed();
+        } else {
+          transitionAttempts.push("Transition blocked");
+        }
+      }),
+    );
+
+    // Test successful transition: start -> middle
     const result1 = await fs.transition("middle");
     expect(result1).to.be.true;
     expect(fs.state.name).to.equal("middle");
-    expect(log).to.include("Attempting transition: start -> middle");
 
+    // Test blocked transition: middle -> blocked
     const result2 = await fs.transition("blocked");
     expect(result2).to.be.false;
     expect(fs.state.name).to.equal("middle");
-    expect(log).to.include("Attempting transition: middle -> blocked");
-    expect(log).to.include("Transition blocked");
 
+    // Test another successful transition: middle -> end
     const result3 = await fs.transition("end");
     expect(result3).to.be.true;
     expect(fs.state.name).to.equal("end");
-    expect(log).to.include("Attempting transition: middle -> end");
+
+    // Verify all transition attempts were recorded properly
+    expect(transitionAttempts).to.include("Attempting transition: start -> middle");
+    expect(transitionAttempts).to.include("Attempting transition: middle -> blocked");
+    expect(transitionAttempts).to.include("Transition blocked");
+    expect(transitionAttempts).to.include("Attempting transition: middle -> end");
   });
 });
 
