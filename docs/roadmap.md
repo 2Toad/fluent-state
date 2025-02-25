@@ -296,6 +296,65 @@ Benefits:
 - Performance monitoring and optimization insights
 - Real-time metrics for debugging and profiling
 
+User Story:
+As a developer building a performance-critical application with FluentState,
+I want to optimize how state updates are processed and monitored,
+So that I can minimize performance bottlenecks, reduce unnecessary re-renders, and gain insights into my application's state management behavior.
+
+Acceptance Criteria:
+
+1. Batched Updates
+   - Multiple state updates occurring within the configured time window are batched into a single update
+   - The batchTimeWindow parameter controls how long to wait before processing batched updates
+   - Batching can be enabled/disabled globally via the batchUpdates configuration option
+   - Batched updates maintain the same final state as if updates were processed individually
+
+2. Memoization Support
+   - When enableMemoization is true, derived values from state are cached and only recalculated when dependencies change
+   - Memoization works with both simple and complex state structures
+   - Memoized values are properly invalidated when their dependencies change
+   - Memory usage is optimized by clearing unused memoized values
+
+3. Custom Equality Checking
+   - Developers can provide a custom areEqual function to determine if state has actually changed
+   - The custom equality function is used to prevent unnecessary updates when state is structurally equivalent
+   - Default equality checking uses a shallow comparison for objects and arrays
+   - Custom equality checking works with all state update methods
+
+4. Performance Metrics
+   - When metrics.enabled is true, the state manager collects performance data
+   - Update frequency, duration, and count are tracked when measureUpdates is true
+   - Memory usage statistics are collected when measureMemory is true
+   - Computation timing for equality checks, memoization, and derivations is measured when measureComputations is true
+   - Metrics are provided to the onMetrics callback for custom reporting or visualization
+   - Metrics collection has minimal impact on overall performance
+
+Example Usage:
+```typescript
+// Configure performance optimizations
+const machine = new StateMachine({
+  initialState: "idle",
+  stateManagerConfig: {
+    batchUpdates: true,
+    batchTimeWindow: 50, // 50ms batching window
+    enableMemoization: true,
+    areEqual: (prev, next) => _.isEqual(prev, next), // Deep equality check
+    metrics: {
+      enabled: true,
+      measureUpdates: true,
+      measureMemory: process.env.NODE_ENV === 'development',
+      measureComputations: process.env.NODE_ENV === 'development',
+      onMetrics: (metrics) => {
+        console.log('State Manager Metrics:', metrics);
+        if (metrics.updateFrequency < 16) { // Less than 60fps
+          console.warn('Performance warning: High update frequency detected');
+        }
+      }
+    }
+  }
+});
+```
+
 ## 7. Debugging and Development Tools
 Dependencies:
 - Transition History (for comprehensive debugging capabilities)

@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { FluentState, TransitionHistory, TransitionHistoryOptions, SerializationOptions } from "../src";
 import { fluentState } from "../src/fluent-state";
+import { suppressConsole } from "./helpers";
 
 describe("Transition History", () => {
   // Reset the default instance after each test
@@ -588,11 +589,22 @@ describe("Transition History", () => {
     });
 
     it("should handle invalid JSON gracefully", () => {
-      // Try to import invalid JSON
-      const importedHistory = TransitionHistory.fromJSON("invalid json");
+      // Suppress console errors for this test since we expect an error
+      const { flags, restore } = suppressConsole({ suppressError: true });
 
-      // Should return an empty history instance
-      expect(importedHistory.getAll().length).to.equal(0);
+      try {
+        // Try to import invalid JSON
+        const importedHistory = TransitionHistory.fromJSON("invalid json");
+
+        // Should return an empty history instance
+        expect(importedHistory.getAll().length).to.equal(0);
+
+        // Verify that an error was logged
+        expect(flags.errorLogged).to.be.true;
+      } finally {
+        // Always restore console functions
+        restore();
+      }
     });
   });
 });

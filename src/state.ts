@@ -1,6 +1,6 @@
 import { FluentState } from "./fluent-state";
 import { Transition } from "./transition";
-import { EventHandler, EnterEventHandler, ExitEventHandler, AutoTransitionConfig, AutoTransition, IStateManager } from "./types";
+import { EventHandler, EnterEventHandler, ExitEventHandler, AutoTransitionConfig, AutoTransition, IStateManager, StateManagerConfig } from "./types";
 import { StateManager } from "./state-manager";
 
 /**
@@ -45,7 +45,11 @@ export class State {
   constructor(name: string, fluentState: FluentState) {
     this.fluentState = fluentState;
     this.name = name;
-    this.stateManager = new StateManager({});
+
+    // Initialize state manager with configuration from FluentState if available
+    const stateManagerConfig = fluentState["stateManagerConfig"] as StateManagerConfig<unknown> | undefined;
+    this.stateManager = new StateManager({}, stateManagerConfig);
+
     // Don't automatically subscribe to state changes
     // We'll evaluate transitions only when explicitly called
   }
@@ -84,16 +88,14 @@ export class State {
   }
 
   /**
-   * Sets a custom state manager to handle context updates.
-   * This allows users to integrate their own state management solution.
+   * Sets a custom state manager for this state.
    *
-   * @param stateManager - The custom state manager to use
+   * @param stateManager - The state manager to use
    */
   setStateManager<T>(stateManager: IStateManager<T>): void {
     // Clean up existing subscription if any
     if (this.unsubscribe) {
       this.unsubscribe();
-      this.unsubscribe = undefined;
     }
 
     this.stateManager = stateManager;
