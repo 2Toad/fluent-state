@@ -48,14 +48,16 @@ export class TransitionHistory {
    * @param toState - The target state name
    * @param context - The context data at the time of transition
    * @param success - Whether the transition was successful
+   * @param groupName - The name of the group this transition belongs to (if any)
    */
-  recordTransition(fromState: State | null, toState: string, context: unknown, success: boolean): void {
+  recordTransition(fromState: State | null, toState: string, context: unknown, success: boolean, groupName?: string): void {
     const entry: TransitionHistoryEntry = {
       from: fromState ? fromState.name : "null",
       to: toState,
       timestamp: Date.now(),
       context: this.options.includeContext ? context : undefined,
       success,
+      groupName,
     };
 
     this.add(entry);
@@ -78,6 +80,16 @@ export class TransitionHistory {
    */
   getTransitionsForState(stateName: string): TransitionHistoryEntry[] {
     return this.history.filter((entry) => entry.from === stateName || entry.to === stateName);
+  }
+
+  /**
+   * Gets all transitions belonging to a specific group.
+   *
+   * @param groupName - The name of the group to filter by
+   * @returns An array of transition entries belonging to the specified group
+   */
+  getTransitionsForGroup(groupName: string): TransitionHistoryEntry[] {
+    return this.history.filter((entry) => entry.groupName === groupName);
   }
 
   /**
@@ -146,7 +158,6 @@ export class TransitionHistory {
       // Add each entry to the history in reverse order to maintain chronology
       // (since add() adds to the beginning)
       for (let i = parsedHistory.length - 1; i >= 0; i--) {
-        // eslint-disable-next-line security/detect-object-injection -- index is safely generated and parsedHistory array is internal
         history.add(parsedHistory[i]);
       }
 
