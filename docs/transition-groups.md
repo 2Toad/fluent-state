@@ -9,8 +9,10 @@ Transition Groups offer several key benefits:
 1. **Organization**: Group transitions by feature, workflow, or responsibility
 2. **Collective Management**: Enable, disable, or configure multiple transitions at once
 3. **Modularity**: Create reusable transition patterns that can be imported/exported
-4. **Tagging**: Further organize transitions within groups using tags
-5. **Runtime Control**: Selectively activate or deactivate parts of your state machine
+4. **Hierarchical Configuration**: Create parent-child relationships where child groups inherit configuration from parents
+5. **Dynamic Configuration**: Define configuration values as functions that adapt to application state at runtime
+6. **Tagging**: Further organize transitions within groups using tags
+7. **Runtime Control**: Selectively activate or deactivate parts of your state machine
 
 ## Features
 
@@ -115,7 +117,117 @@ group
   });
 ```
 
-### 4. Transition Tagging
+### 4. Configuration Inheritance
+
+Transition Groups support parent-child relationships where child groups inherit configuration from their parents:
+
+```typescript
+// Create a parent group with base configuration
+const parentGroup = fluentState.createGroup("checkout-flow")
+  .withConfig({
+    priority: 10,
+    debounce: 200,
+    retryConfig: {
+      maxAttempts: 3,
+      delay: 100
+    }
+  });
+
+// Create a child group that inherits from parent
+const childGroup = parentGroup.createChildGroup("payment-processing");
+
+// Or set parent after creation
+const anotherChild = fluentState.createGroup("shipping");
+anotherChild.setParent(parentGroup);
+
+// Check parent-child relationships
+const parent = childGroup.getParent(); // Returns parentGroup
+const children = parentGroup.getChildGroups(); // Returns array of child groups
+```
+
+Child groups inherit all configuration from parent groups, but can override specific settings:
+
+```typescript
+// Override some settings, inherit others
+childGroup.withConfig({
+  priority: 20, // Override parent's priority
+  // Will inherit parent's debounce and retryConfig
+});
+```
+
+Inheritance supports multi-level hierarchies, with configurations cascading from ancestors to descendants:
+
+```typescript
+// Create three-level hierarchy
+const grandchildGroup = childGroup.createChildGroup("special-payment");
+
+// Configuration resolution follows the chain:
+// grandchildGroup <- childGroup <- parentGroup
+```
+
+When a transition's configuration is evaluated, the most specific (nearest ancestor's) value is used.
+
+### 5. Dynamic Configuration
+
+Transition Groups support dynamic configuration values that are evaluated at runtime based on context:
+
+```typescript
+group.withConfig({
+  // Dynamic priority based on context
+  priority: (context) => context.isPriority ? 10 : 5,
+  
+  // Dynamic debounce based on system load
+  debounce: (context) => context.systemLoad > 0.8 ? 500 : 100,
+  
+  // Dynamic retry settings
+  retryConfig: {
+    maxAttempts: (context) => context.isImportant ? 5 : 3,
+    delay: (context) => context.networkSpeed === 'slow' ? 200 : 50
+  }
+});
+```
+
+When retrieving a transition's configuration, provide the context to evaluate dynamic values:
+
+```typescript
+// Get configuration with context evaluation
+const appContext = { 
+  isPriority: true,
+  systemLoad: 0.9,
+  isImportant: true,
+  networkSpeed: 'slow'
+};
+
+const config = group.getEffectiveConfig("stateA", "stateB", appContext);
+// config.priority will be 10
+// config.debounce will be 500
+// config.retryConfig.maxAttempts will be 5
+// config.retryConfig.delay will be 200
+```
+
+If you don't provide a context when getting configuration, dynamic values will be undefined:
+
+```typescript
+// Without context, dynamic values aren't evaluated
+const staticConfig = group.getEffectiveConfig("stateA", "stateB");
+// Dynamic values will be undefined
+```
+
+Dynamic configuration works with inheritance - a child group can override a parent's static value with a dynamic one, or vice versa:
+
+```typescript
+parentGroup.withConfig({
+  priority: 10 // Static
+});
+
+childGroup.withConfig({
+  priority: (context) => context.userLevel === 'vip' ? 20 : 5 // Dynamic
+});
+```
+
+Note that dynamic configuration functions are not serialized. When serializing a group with dynamic configuration, only static values will be included.
+
+### 6. Transition Tagging
 
 Tags provide an additional level of organization within groups:
 
@@ -147,7 +259,7 @@ const tags = group.getTagsForTransition("review", "approved");
 group.removeTagFromTransition("review", "approved", "important");
 ```
 
-### 5. Enabling and Disabling Groups
+### 7. Enabling and Disabling Groups
 
 Transition Groups can be enabled or disabled to control which transitions are active:
 
@@ -167,7 +279,7 @@ group.disableTemporarily(5000, () => {
 });
 ```
 
-### 6. Automatic Cleanup
+### 8. Automatic Cleanup
 
 When a state is removed from the state machine, all transitions involving that state are automatically removed from all groups:
 
@@ -186,7 +298,7 @@ group.hasTransition("review", "b"); // false
 
 This cleanup also includes removing tags associated with the removed transitions.
 
-### 7. Serialization and Deserialization
+### 9. Serialization and Deserialization
 
 Transition Groups can be serialized for storage or transmission:
 
@@ -314,18 +426,47 @@ const workflow = new FluentState({
   initialState: "draft"
 });
 
-// Create a group for the main approval flow
-const mainFlow = workflow.createGroup("approval").withConfig({
-  priority: 10
+// System context with runtime variables
+const systemContext = {
+  userLevel: "admin", // Can be "user", "reviewer", or "admin"
+  documentSize: 1.5, // Size in MB
+  isUrgent: true
+};
+
+// Create a main group for the workflow with dynamic configuration
+const mainFlow = workflow.createGroup("workflow").withConfig({
+  // Higher priority for urgent documents
+  priority: (ctx) => (ctx as typeof systemContext).isUrgent ? 15 : 10,
+  
+  // Debounce based on document size - larger docs need more time
+  debounce: (ctx) => Math.round(100 + (ctx as typeof systemContext).documentSize * 50)
 });
 
-// Create a group for the review flow
-const reviewFlow = workflow.createGroup("review").withConfig({
-  priority: 5
+// Create a group for the main approval flow as a child of the main workflow
+const approvalFlow = mainFlow.createChildGroup("approval").withConfig({
+  // Inherit priority and debounce from parent, add retry config
+  retryConfig: {
+    maxAttempts: 3,
+    delay: 100
+  }
 });
 
-// Define states and transitions with tags for the main approval flow
-mainFlow
+// Create a group for the review flow as another child
+const reviewFlow = mainFlow.createChildGroup("review").withConfig({
+  // Lower priority than approval flow
+  priority: (ctx) => {
+    // Base priority depends on user level
+    let basePriority = 5;
+    if ((ctx as typeof systemContext).userLevel === "admin") {
+      basePriority = 8;
+    }
+    // Adjust for urgency (inherits dynamic behavior from parent)
+    return (ctx as typeof systemContext).isUrgent ? basePriority + 5 : basePriority;
+  }
+});
+
+// Define states and transitions with tags for the approval flow
+approvalFlow
   .from("draft")
   .withTags("edit", "initial")
   .to("review", {
@@ -333,7 +474,7 @@ mainFlow
     targetState: "review"
   });
 
-mainFlow
+approvalFlow
   .from("review")
   .withTags("approval", "critical")
   .to("approved", {
@@ -363,12 +504,20 @@ reviewFlow
     targetState: "review"
   });
 
+// Get effective configuration with context
+const approvalConfig = approvalFlow.getEffectiveConfig("review", "approved", systemContext);
+console.log("Approval transition configuration:");
+console.log("- Priority:", approvalConfig?.priority); // 15 (from parent's dynamic config)
+console.log("- Debounce:", approvalConfig?.debounce); // 175 (from parent's dynamic config)
+console.log("- Retry attempts:", approvalConfig?.retryConfig?.maxAttempts); // 3 (from approvalFlow)
+
 // Start the state machine
 workflow.start();
 ```
 
 This example demonstrates:
-- Multiple transition groups for different aspects of the workflow
+- A hierarchy of transition groups with configuration inheritance
+- Dynamic configuration based on context variables
 - Using tags to categorize transitions within groups
-- Group-level configuration for priorities
-- Conditional transitions based on context 
+- Calculating effective configuration that combines static and dynamic values
+- Runtime evaluation of configuration based on system context 

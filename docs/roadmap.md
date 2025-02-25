@@ -248,46 +248,46 @@ So that I can better structure my application's state flow, enable/disable sets 
 Acceptance Criteria:
 
 1. Group Creation and Management
-   - Developers can create transition groups using a fluent API: `fluentState.createGroup('groupName')`
-   - Groups can be chained with additional configuration: `fluentState.createGroup('groupName').withConfig({ priority: 2 })`
-   - Groups can be retrieved using a fluent method: `fluentState.group('groupName')`
-   - Return `null` or throw a specific error when a group is not found
-   - The API prevents duplicate group names within the same state machine
-   - Groups can be removed using a fluent method: `fluentState.removeGroup('groupName')`
-   - Provide a mechanism to list all available groups: `fluentState.getAllGroups()`
-   - Support for group namespaces or categories (e.g., `authentication:login`, `authentication:register`)
-   - Option to initialize groups from a serialized configuration object
+   - ✅ Developers can create transition groups using a fluent API: `fluentState.createGroup('groupName')`
+   - ✅ Groups can be chained with additional configuration: `fluentState.createGroup('groupName').withConfig({ priority: 2 })`
+   - ✅ Groups can be retrieved using a fluent method: `fluentState.group('groupName')`
+   - ✅ Return `null` or throw a specific error when a group is not found
+   - ✅ The API prevents duplicate group names within the same state machine
+   - ✅ Groups can be removed using a fluent method: `fluentState.removeGroup('groupName')`
+   - ✅ Provide a mechanism to list all available groups: `fluentState.getAllGroups()`
+   - ✅ Support for group namespaces or categories (e.g., `authentication:login`, `authentication:register`)
+   - ✅ Option to initialize groups from a serialized configuration object
 
 2. Transition Definition and Organization
-   - Transitions can be added to a group using a fluent syntax: `group.from('stateA').to('stateB', config)`
-   - Multiple transitions can be chained: `group.from('stateA').to('stateB').or('stateC')`
-   - The group maintains direct references to the original Transition objects rather than recreating them
-   - Transitions in a group are properly registered with the FluentState instance
-   - Transitions can be removed using a fluent method: `group.removeTransition('stateA', 'stateB')`
-   - When a state is removed from the state machine, any transitions involving that state are automatically removed from all groups
-   - Method to check if a specific transition belongs to a group: `group.hasTransition('stateA', 'stateB')`
-   - Support for transition tagging within groups for sub-categorization
+   - ✅ Transitions can be added to a group using a fluent syntax: `group.from('stateA').to('stateB', config)`
+   - ✅ Multiple transitions can be chained: `group.from('stateA').to('stateB').or('stateC')`
+   - ✅ The group maintains direct references to the original Transition objects rather than recreating them
+   - ✅ Transitions in a group are properly registered with the FluentState instance
+   - ✅ Transitions can be removed using a fluent method: `group.removeTransition('stateA', 'stateB')`
+   - ✅ When a state is removed from the state machine, any transitions involving that state are automatically removed from all groups
+   - ✅ Method to check if a specific transition belongs to a group: `group.hasTransition('stateA', 'stateB')`
+   - ✅ Support for transition tagging within groups for sub-categorization
 
 3. Group-level Configuration
-   - Group-level configuration can be set using a fluent API: `group.withConfig({ priority: 2, debounce: 300 })`
-   - Individual transition configurations override group-level configurations when both are specified
-   - Configuration options include:
-     - Priority levels for all transitions in the group
-     - Debounce settings for all transitions in the group
-     - Retry configuration for all transitions in the group
+   - ✅ Group-level configuration can be set using a fluent API: `group.withConfig({ priority: 2, debounce: 300 })`
+   - ✅ Individual transition configurations override group-level configurations when both are specified
+   - ✅ Configuration options include:
+     - ✅ Priority levels for all transitions in the group
+     - ✅ Debounce settings for all transitions in the group
+     - ✅ Retry configuration for all transitions in the group
    - Support for configuration inheritance between related groups
-   - Provide a method to get the effective configuration for a transition: `group.getEffectiveConfig('stateA', 'stateB')`
+   - ✅ Provide a method to get the effective configuration for a transition: `group.getEffectiveConfig('stateA', 'stateB')`
    - Support for dynamic configuration that can change based on application state
 
 4. Group Enabling/Disabling
-   - Groups can be enabled or disabled using fluent methods: `group.enable()` and `group.disable()`
-   - The enabled state can be queried: `group.isEnabled()`
-   - When a group is disabled, none of its transitions are evaluated during auto-transition evaluation
-   - When a group is disabled, manual transitions within the group are still possible (unless explicitly prevented)
+   - ✅ Groups can be enabled or disabled using fluent methods: `group.enable()` and `group.disable()`
+   - ✅ The enabled state can be queried: `group.isEnabled()`
+   - ✅ When a group is disabled, none of its transitions are evaluated during auto-transition evaluation
+   - ✅ When a group is disabled, manual transitions within the group are still possible (unless explicitly prevented)
    - Add an option to also prevent manual transitions when a group is disabled
-   - Enabling a previously disabled group immediately makes its transitions available for evaluation
-   - The API provides a fluent way to temporarily disable a group: `group.disableTemporarily(duration)`
-   - Provide a restoration callback for when a temporarily disabled group is re-enabled
+   - ✅ Enabling a previously disabled group immediately makes its transitions available for evaluation
+   - ✅ The API provides a fluent way to temporarily disable a group: `group.disableTemporarily(duration)`
+   - ✅ Provide a restoration callback for when a temporarily disabled group is re-enabled
    - Support for conditionally enabled groups based on a predicate function
 
 5. Event Handling
@@ -307,7 +307,7 @@ Acceptance Criteria:
    - History entries include the group name for transitions that belong to a group
    - Transition groups are compatible with the debugging and visualization tools
    - Groups can be visualized as clusters in state machine diagrams
-   - Support for serialization and deserialization of group definitions
+   - ✅ Support for serialization and deserialization of group definitions
    - Integration with the proposed logging system to provide group-specific logging
 
 7. Performance Considerations

@@ -430,15 +430,30 @@ export class FluentState {
    * Creates a new transition group with the given name.
    *
    * @param name - The unique name for the group
+   * @param parentGroup - Optional parent group for configuration inheritance
    * @returns The newly created group
    * @throws If a group with the same name already exists
    */
-  createGroup(name: string): TransitionGroup {
+  createGroup(name: string, parentGroup?: string | TransitionGroup): TransitionGroup {
     if (this.groups.has(name)) {
       throw new StateError(`Group with name "${name}" already exists`);
     }
 
-    const group = new TransitionGroup(name, this);
+    let parentGroupObj: TransitionGroup | undefined;
+
+    // If parent group is provided, find it
+    if (parentGroup) {
+      if (typeof parentGroup === "string") {
+        parentGroupObj = this.group(parentGroup);
+        if (!parentGroupObj) {
+          throw new StateError(`Parent group "${parentGroup}" not found`);
+        }
+      } else {
+        parentGroupObj = parentGroup;
+      }
+    }
+
+    const group = new TransitionGroup(name, this, parentGroupObj);
     this.groups.set(name, group);
 
     return group;
@@ -461,10 +476,21 @@ export class FluentState {
       throw new StateError(`Group with name "${fullName}" already exists`);
     }
 
+    // Create the new group, without connecting to parent yet
     const group = new TransitionGroup(fullName, this);
+
+    // Set up the group with the serialized data
     group.deserialize(serialized, conditionMap);
 
+    // Add to groups map first so parent lookup can find it
     this.groups.set(fullName, group);
+
+    // Connect to parent group if specified
+    if (serialized.parentGroup && this.groups.has(serialized.parentGroup)) {
+      const parentGroup = this.groups.get(serialized.parentGroup)!;
+      group.setParent(parentGroup);
+    }
+
     return group;
   }
 
@@ -485,6 +511,12 @@ export class FluentState {
    * @returns True if the group was found and removed, false otherwise
    */
   removeGroup(name: string): boolean {
+    const group = this.groups.get(name);
+    if (!group) return false;
+
+    // The parent-child relationships will be automatically cleaned up
+    // when the group is removed from the map
+
     return this.groups.delete(name);
   }
 

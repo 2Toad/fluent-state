@@ -238,4 +238,5 @@ export interface SerializedTransitionGroup {
     config?: Omit<AutoTransitionConfig, "condition">; // Condition functions cannot be serialized
     tags?: string[]; // Optional tags for categorizing transitions
   }>;
+  parentGroup?: string; // Name of the parent group for configuration inheritance
 }

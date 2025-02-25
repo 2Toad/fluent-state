@@ -6,13 +6,13 @@ import { FluentState } from "./fluent-state";
  */
 export interface TransitionGroupConfig {
   /** Priority for all transitions in this group (higher values evaluated first) */
-  priority?: number;
+  priority?: number | ((context: unknown) => number);
   /** Debounce setting for all transitions in this group (in milliseconds) */
-  debounce?: number;
+  debounce?: number | ((context: unknown) => number);
   /** Retry configuration for all transitions in this group */
   retryConfig?: {
-    maxAttempts: number;
-    delay: number;
+    maxAttempts: number | ((context: unknown) => number);
+    delay: number | ((context: unknown) => number);
   };
 }
 
@@ -29,6 +29,12 @@ export class TransitionGroup {
 
   /** Reference to the parent FluentState instance */
   private fluentState: FluentState;
+
+  /** Reference to the parent group if this is a child group */
+  private parentGroup?: TransitionGroup;
+
+  /** Child groups that inherit configuration from this group */
+  private childGroups: Set<TransitionGroup> = new Set();
 
   /** Whether this group is currently enabled */
   private enabled: boolean = true;
@@ -50,8 +56,9 @@ export class TransitionGroup {
    *
    * @param name - The unique name for this group (can include namespace with ':' separator)
    * @param fluentState - The parent FluentState instance
+   * @param parentGroup - Optional parent group for configuration inheritance
    */
-  constructor(name: string, fluentState: FluentState) {
+  constructor(name: string, fluentState: FluentState, parentGroup?: TransitionGroup) {
     // Handle namespaced group names (e.g., "authentication:login")
     const parts = name.split(":");
     if (parts.length > 1) {
@@ -62,6 +69,11 @@ export class TransitionGroup {
     }
 
     this.fluentState = fluentState;
+
+    // Set parent group if provided
+    if (parentGroup) {
+      this.setParent(parentGroup);
+    }
   }
 
   /**
@@ -71,6 +83,53 @@ export class TransitionGroup {
    */
   getFullName(): string {
     return this.namespace ? `${this.namespace}:${this.name}` : this.name;
+  }
+
+  /**
+   * Sets a parent group for this group to inherit configuration from.
+   *
+   * @param parentGroup - The parent transition group
+   * @returns This group instance for chaining
+   */
+  setParent(parentGroup: TransitionGroup): TransitionGroup {
+    // Remove from previous parent if exists
+    if (this.parentGroup) {
+      this.parentGroup.childGroups.delete(this);
+    }
+
+    this.parentGroup = parentGroup;
+    parentGroup.childGroups.add(this);
+    return this;
+  }
+
+  /**
+   * Gets the parent group of this group.
+   *
+   * @returns The parent group or undefined if none exists
+   */
+  getParent(): TransitionGroup | undefined {
+    return this.parentGroup;
+  }
+
+  /**
+   * Creates a child group that inherits configuration from this group.
+   *
+   * @param name - The name for the child group
+   * @returns The new child group
+   */
+  createChildGroup(name: string): TransitionGroup {
+    // Create the child group with this as the parent and register it with the FluentState instance
+    const childGroup = this.fluentState.createGroup(name, this);
+    return childGroup;
+  }
+
+  /**
+   * Gets all child groups of this group.
+   *
+   * @returns Array of child groups
+   */
+  getChildGroups(): TransitionGroup[] {
+    return Array.from(this.childGroups);
   }
 
   /**
@@ -122,17 +181,29 @@ export class TransitionGroup {
 
     // Apply group priority if set and not overridden
     if (this.config.priority !== undefined && mergedConfig.priority === undefined) {
-      mergedConfig.priority = this.config.priority;
+      // When merging, we can only use static values here (functions will be evaluated at runtime)
+      if (typeof this.config.priority !== "function") {
+        mergedConfig.priority = this.config.priority;
+      }
     }
 
     // Apply group debounce if set and not overridden
     if (this.config.debounce !== undefined && mergedConfig.debounce === undefined) {
-      mergedConfig.debounce = this.config.debounce;
+      // When merging, we can only use static values here (functions will be evaluated at runtime)
+      if (typeof this.config.debounce !== "function") {
+        mergedConfig.debounce = this.config.debounce;
+      }
     }
 
     // Apply group retry config if set and not overridden
     if (this.config.retryConfig !== undefined && mergedConfig.retryConfig === undefined) {
-      mergedConfig.retryConfig = this.config.retryConfig;
+      // When merging, we can only use static values here (functions will be evaluated at runtime)
+      if (typeof this.config.retryConfig.maxAttempts !== "function" && typeof this.config.retryConfig.delay !== "function") {
+        mergedConfig.retryConfig = {
+          maxAttempts: this.config.retryConfig.maxAttempts as number,
+          delay: this.config.retryConfig.delay as number,
+        };
+      }
     }
 
     // Initialize map for source state if needed
@@ -279,18 +350,110 @@ export class TransitionGroup {
   }
 
   /**
-   * Gets the effective configuration for a transition.
+   * Evaluates a dynamic configuration value if it's a function, otherwise returns the static value.
+   *
+   * @param value - The configuration value or function
+   * @param context - The context to pass to the function
+   * @returns The evaluated configuration value
+   */
+  private evaluateConfigValue<T>(value: T | ((context: unknown) => T), context: unknown): T {
+    if (typeof value === "function") {
+      return (value as (context: unknown) => T)(context);
+    }
+    return value;
+  }
+
+  /**
+   * Gets the effective configuration for a transition, including inherited configuration from parent groups.
    *
    * @param fromState - The source state name
    * @param toState - The target state name
+   * @param context - Optional context for evaluating dynamic configuration
    * @returns The transition configuration or undefined if not found
    */
-  getEffectiveConfig(fromState: string, toState: string): AutoTransitionConfig | undefined {
+  getEffectiveConfig(fromState: string, toState: string, context?: unknown): AutoTransitionConfig | undefined {
     if (!this.hasTransition(fromState, toState)) {
       return undefined;
     }
 
-    return this.transitions.get(fromState)!.get(toState);
+    const transitionConfig = this.transitions.get(fromState)!.get(toState)!;
+    const result: AutoTransitionConfig = { ...transitionConfig };
+
+    // Build the configuration inheritance chain
+    // Start with this group's config
+    const effectiveConfig: TransitionGroupConfig = {};
+
+    // Collect parent configs in correct order (from most distant ancestor to this group)
+    const configChain: TransitionGroupConfig[] = [this.config];
+    let currentParent = this.parentGroup;
+    while (currentParent) {
+      configChain.unshift(currentParent.config);
+      currentParent = currentParent.getParent();
+    }
+
+    // Apply configs in order (from oldest ancestor to this group)
+    // This ensures more recent configurations override older ones
+    for (const groupConfig of configChain) {
+      // Apply more recent config (override older ones)
+      if (groupConfig.priority !== undefined) {
+        effectiveConfig.priority = groupConfig.priority;
+      }
+
+      if (groupConfig.debounce !== undefined) {
+        effectiveConfig.debounce = groupConfig.debounce;
+      }
+
+      if (groupConfig.retryConfig !== undefined) {
+        if (!effectiveConfig.retryConfig) {
+          effectiveConfig.retryConfig = { ...groupConfig.retryConfig };
+        } else {
+          // Apply individual retry config properties, allowing partial overrides
+          if (groupConfig.retryConfig.maxAttempts !== undefined) {
+            effectiveConfig.retryConfig.maxAttempts = groupConfig.retryConfig.maxAttempts;
+          }
+          if (groupConfig.retryConfig.delay !== undefined) {
+            effectiveConfig.retryConfig.delay = groupConfig.retryConfig.delay;
+          }
+        }
+      }
+    }
+
+    // Apply effective group config to the transition if not overridden by the transition itself
+    if (effectiveConfig.priority !== undefined && result.priority === undefined) {
+      // If dynamic configuration and context is provided, evaluate it
+      if (context !== undefined) {
+        result.priority = this.evaluateConfigValue(effectiveConfig.priority, context);
+      } else {
+        result.priority =
+          typeof effectiveConfig.priority === "function"
+            ? undefined // Can't evaluate functions without context
+            : effectiveConfig.priority;
+      }
+    }
+
+    if (effectiveConfig.debounce !== undefined && result.debounce === undefined) {
+      if (context !== undefined) {
+        result.debounce = this.evaluateConfigValue(effectiveConfig.debounce, context);
+      } else {
+        result.debounce = typeof effectiveConfig.debounce === "function" ? undefined : effectiveConfig.debounce;
+      }
+    }
+
+    if (effectiveConfig.retryConfig !== undefined && result.retryConfig === undefined) {
+      if (context !== undefined) {
+        result.retryConfig = {
+          maxAttempts: this.evaluateConfigValue(effectiveConfig.retryConfig.maxAttempts, context),
+          delay: this.evaluateConfigValue(effectiveConfig.retryConfig.delay, context),
+        };
+      } else if (typeof effectiveConfig.retryConfig.maxAttempts !== "function" && typeof effectiveConfig.retryConfig.delay !== "function") {
+        result.retryConfig = {
+          maxAttempts: effectiveConfig.retryConfig.maxAttempts as number,
+          delay: effectiveConfig.retryConfig.delay as number,
+        };
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -358,7 +521,7 @@ export class TransitionGroup {
 
   /**
    * Serializes this group to a plain object representation.
-   * Note that transition conditions are not serialized as they are functions.
+   * Note that transition conditions and dynamic configuration functions are not serialized as they are functions.
    *
    * @returns Serialized representation of this group
    */
@@ -381,18 +544,43 @@ export class TransitionGroup {
       });
     });
 
+    // Serialize static config properties only
+    const serializableConfig: SerializedTransitionGroup["config"] = {};
+
+    if (this.config.priority !== undefined && typeof this.config.priority !== "function") {
+      serializableConfig.priority = this.config.priority;
+    }
+
+    if (this.config.debounce !== undefined && typeof this.config.debounce !== "function") {
+      serializableConfig.debounce = this.config.debounce;
+    }
+
+    if (this.config.retryConfig !== undefined) {
+      const retryConfig: { maxAttempts?: number; delay?: number } = {};
+      if (typeof this.config.retryConfig.maxAttempts !== "function") {
+        retryConfig.maxAttempts = this.config.retryConfig.maxAttempts as number;
+      }
+      if (typeof this.config.retryConfig.delay !== "function") {
+        retryConfig.delay = this.config.retryConfig.delay as number;
+      }
+      if (Object.keys(retryConfig).length > 0) {
+        serializableConfig.retryConfig = retryConfig as { maxAttempts: number; delay: number };
+      }
+    }
+
     return {
       name: this.name,
       namespace: this.namespace,
       enabled: this.enabled,
-      config: { ...this.config },
+      config: serializableConfig,
       transitions: serializedTransitions,
+      parentGroup: this.parentGroup ? this.parentGroup.getFullName() : undefined,
     };
   }
 
   /**
    * Initializes this group from a serialized representation.
-   * Note that transition conditions need to be provided separately.
+   * Note that transition conditions and dynamic configuration functions need to be provided separately.
    *
    * @param serialized - Serialized group data
    * @param conditionMap - Map of condition functions for transitions

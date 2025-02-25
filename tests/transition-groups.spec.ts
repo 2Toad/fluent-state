@@ -842,4 +842,264 @@ describe("Transition Groups", () => {
       expect(group1.getTransitionsByTag("tag3")).to.have.length(1);
     });
   });
+
+  describe("Configuration inheritance", () => {
+    let fsm: FluentState;
+    let parentGroup: TransitionGroup;
+    let childGroup: TransitionGroup;
+
+    beforeEach(() => {
+      fsm = new FluentState();
+      fsm._addState("s1");
+      fsm._addState("s2");
+      fsm._addState("s3");
+
+      // Create parent group with configuration
+      parentGroup = fsm.createGroup("parent");
+      parentGroup.withConfig({
+        priority: 5,
+        debounce: 100,
+        retryConfig: {
+          maxAttempts: 3,
+          delay: 50,
+        },
+      });
+
+      // Create child group
+      childGroup = fsm.createGroup("child", parentGroup);
+    });
+
+    it("should inherit configuration from parent group", () => {
+      // Add a transition to the child group
+      childGroup.addTransition("s1", "s2", {
+        condition: () => true,
+        targetState: "s2",
+      });
+
+      // Get the effective configuration
+      const config = childGroup.getEffectiveConfig("s1", "s2");
+
+      // Should inherit parent's configuration
+      expect(config?.priority).to.equal(5);
+      expect(config?.debounce).to.equal(100);
+      expect(config?.retryConfig?.maxAttempts).to.equal(3);
+      expect(config?.retryConfig?.delay).to.equal(50);
+    });
+
+    it("should override parent configuration with child configuration", () => {
+      // Set child configuration that's different from parent
+      childGroup.withConfig({
+        priority: 10,
+        debounce: 200,
+      });
+
+      // Add a transition to the child group
+      childGroup.addTransition("s1", "s2", {
+        condition: () => true,
+        targetState: "s2",
+      });
+
+      // Get the effective configuration
+      const config = childGroup.getEffectiveConfig("s1", "s2");
+
+      // Should use child's configuration for overridden values
+      expect(config?.priority).to.equal(10);
+      expect(config?.debounce).to.equal(200);
+      // But still inherit non-overridden values
+      expect(config?.retryConfig?.maxAttempts).to.equal(3);
+      expect(config?.retryConfig?.delay).to.equal(50);
+    });
+
+    it("should allow creating child groups via parent", () => {
+      // Create child via parent's method
+      const anotherChild = parentGroup.createChildGroup("another-child");
+
+      // Verify it exists and has the right parent
+      expect(anotherChild.getFullName()).to.equal("another-child");
+      expect(anotherChild.getParent()).to.equal(parentGroup);
+
+      // Should be registered in the state machine
+      expect(fsm.group("another-child")).to.equal(anotherChild);
+    });
+
+    it("should support multi-level inheritance", () => {
+      // Create three-level hierarchy
+      const grandchildGroup = childGroup.createChildGroup("grandchild");
+
+      // Set different configs at each level
+      parentGroup.withConfig({ priority: 5, debounce: 100 });
+      childGroup.withConfig({ debounce: 200 });
+      grandchildGroup.withConfig({ priority: 10 });
+
+      // Add transitions
+      grandchildGroup.addTransition("s1", "s2", {
+        condition: () => true,
+        targetState: "s2",
+      });
+
+      // Get effective configuration
+      const config = grandchildGroup.getEffectiveConfig("s1", "s2");
+
+      // Should resolve to the nearest ancestor's value
+      expect(config?.priority).to.equal(10); // From grandchild
+      expect(config?.debounce).to.equal(200); // From child
+    });
+
+    it("should correctly serialize and deserialize parent-child relationships", () => {
+      // Add transitions to both groups
+      parentGroup.addTransition("s1", "s2", {
+        condition: () => true,
+        targetState: "s2",
+      });
+      childGroup.addTransition("s1", "s3", {
+        condition: () => true,
+        targetState: "s3",
+      });
+
+      // Serialize the groups
+      const serialized = fsm.exportGroups();
+
+      // Clear the state machine
+      fsm = new FluentState();
+      fsm._addState("s1");
+      fsm._addState("s2");
+      fsm._addState("s3");
+
+      // Import the serialized groups
+      fsm.importGroups(serialized, {
+        parent: { s1: { s2: () => true } },
+        child: { s1: { s3: () => true } },
+      });
+
+      // Verify parent-child relationship was restored
+      const restoredParent = fsm.group("parent");
+      const restoredChild = fsm.group("child");
+
+      expect(restoredChild?.getParent()).to.equal(restoredParent);
+    });
+  });
+
+  describe("Dynamic configuration", () => {
+    let fsm: FluentState;
+    let group: TransitionGroup;
+    const context = { priority: 10, debounce: 200, maxAttempts: 3, delay: 50 };
+
+    beforeEach(() => {
+      fsm = new FluentState();
+      fsm._addState("s1");
+      fsm._addState("s2");
+
+      group = fsm.createGroup("dynamic");
+    });
+
+    it("should support dynamic priority based on context", () => {
+      // Set dynamic configuration
+      group.withConfig({
+        priority: (ctx) => (ctx as any).priority,
+      });
+
+      // Add a transition
+      group.addTransition("s1", "s2", {
+        condition: () => true,
+        targetState: "s2",
+      });
+
+      // Get effective configuration with context
+      const config = group.getEffectiveConfig("s1", "s2", context);
+
+      // Should evaluate the function with the context
+      expect(config?.priority).to.equal(10);
+    });
+
+    it("should support dynamic debounce based on context", () => {
+      // Set dynamic configuration
+      group.withConfig({
+        debounce: (ctx) => (ctx as any).debounce,
+      });
+
+      // Add a transition
+      group.addTransition("s1", "s2", {
+        condition: () => true,
+        targetState: "s2",
+      });
+
+      // Get effective configuration with context
+      const config = group.getEffectiveConfig("s1", "s2", context);
+
+      // Should evaluate the function with the context
+      expect(config?.debounce).to.equal(200);
+    });
+
+    it("should support dynamic retry configuration based on context", () => {
+      // Set dynamic configuration
+      group.withConfig({
+        retryConfig: {
+          maxAttempts: (ctx) => (ctx as any).maxAttempts,
+          delay: (ctx) => (ctx as any).delay,
+        },
+      });
+
+      // Add a transition
+      group.addTransition("s1", "s2", {
+        condition: () => true,
+        targetState: "s2",
+      });
+
+      // Get effective configuration with context
+      const config = group.getEffectiveConfig("s1", "s2", context);
+
+      // Should evaluate the functions with the context
+      expect(config?.retryConfig?.maxAttempts).to.equal(3);
+      expect(config?.retryConfig?.delay).to.equal(50);
+    });
+
+    it("should return undefined for dynamic configurations when no context is provided", () => {
+      // Set dynamic configuration
+      group.withConfig({
+        priority: (ctx) => (ctx as any).priority,
+        debounce: (ctx) => (ctx as any).debounce,
+        retryConfig: {
+          maxAttempts: (ctx) => (ctx as any).maxAttempts,
+          delay: (ctx) => (ctx as any).delay,
+        },
+      });
+
+      // Add a transition
+      group.addTransition("s1", "s2", {
+        condition: () => true,
+        targetState: "s2",
+      });
+
+      // Get effective configuration without context
+      const config = group.getEffectiveConfig("s1", "s2");
+
+      // Dynamic values should be undefined when no context is provided
+      expect(config?.priority).to.be.undefined;
+      expect(config?.debounce).to.be.undefined;
+      expect(config?.retryConfig).to.be.undefined;
+    });
+
+    it("should serialize static values but not functions", () => {
+      // Set mixed configuration with both static and dynamic values
+      group.withConfig({
+        priority: 5, // Static
+        debounce: (ctx) => (ctx as any).debounce, // Dynamic
+        retryConfig: {
+          maxAttempts: 3, // Static
+          delay: (ctx) => (ctx as any).delay, // Dynamic
+        },
+      });
+
+      // Serialize the group
+      const serialized = group.serialize();
+
+      // Static values should be included
+      expect(serialized.config.priority).to.equal(5);
+
+      // Dynamic values should be excluded
+      expect(serialized.config.debounce).to.be.undefined;
+      expect(serialized.config.retryConfig?.maxAttempts).to.equal(3);
+      expect(serialized.config.retryConfig?.delay).to.be.undefined;
+    });
+  });
 });
