@@ -133,6 +133,9 @@ export interface DebugConfig {
    * Configuration for graph visualization
    */
   generateGraph?: GraphConfig;
+
+  /** Configuration for time travel debugging */
+  timeTravel?: TimeTravelOptions;
 }
 
 /**
@@ -463,4 +466,81 @@ export interface TransitionHistoryEntry {
   group?: string;
   /** Optional metadata for the transition */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Configuration options for time travel debugging
+ */
+export interface TimeTravelOptions {
+  /** Maximum number of snapshots to keep for time travel */
+  maxSnapshots?: number;
+  /** Whether to apply snapshots automatically when created */
+  autoApply?: boolean;
+  /** Whether to track context changes between snapshots */
+  trackContextChanges?: boolean;
+}
+
+/**
+ * Represents a snapshot of state at a specific point in time
+ */
+export interface TimeSnapshot {
+  /** The state name at this point in time */
+  state: string;
+  /** The context data at this point in time */
+  context: unknown;
+  /** The timestamp when this snapshot was created */
+  timestamp: number;
+  /** Optional index in the transition history */
+  historyIndex?: number;
+  /** Optional description of this snapshot */
+  description?: string;
+  /** Metadata for this snapshot */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Options for generating timeline visualizations
+ */
+export interface TimelineOptions {
+  /** Format for the generated timeline */
+  format?: "mermaid" | "dot" | "svg" | "json";
+  /** Whether to include context data in the timeline */
+  includeContext?: boolean;
+  /** Maximum number of transitions to include */
+  maxTransitions?: number;
+  /** Custom styling for the timeline visualization */
+  styles?: {
+    /** Style for the current state */
+    currentState?: string;
+    /** Style for successful transitions */
+    successfulTransition?: string;
+    /** Style for failed transitions */
+    failedTransition?: string;
+    /** Style for the timeline track */
+    track?: string;
+  };
+}
+
+/**
+ * Difference between two context objects in a time snapshot
+ */
+export interface ContextDiff {
+  /** Properties that were added in the newer context */
+  added: Record<string, unknown>;
+  /** Properties that were removed in the newer context */
+  removed: Record<string, unknown>;
+  /** Properties that were changed between contexts */
+  changed: Record<
+    string,
+    {
+      /** The value in the older context */
+      from: unknown;
+      /** The value in the newer context */
+      to: unknown;
+    }
+  >;
+  /** The older timestamp this diff compares from */
+  fromTimestamp: number;
+  /** The newer timestamp this diff compares to */
+  toTimestamp: number;
 }

@@ -599,13 +599,9 @@ Acceptance Criteria:
    - ✅ Generated visualizations can be used in documentation, presentations, or development tools
 
 5. Developer Experience
-   - Debugging tools integrate with modern development environments and debugging tools
    - ✅ All debugging features have minimal impact on production performance when disabled
-   - Tools provide actionable insights and suggestions for optimizing state machines
-   - Time-travel debugging support through integration with transition history
+   - ✅ Time-travel debugging support through integration with transition history
    - Warning system for potential issues such as unreachable states or conflicting transitions
-   - Interactive mode for testing state transitions and simulating context changes
-   - Development tools are accessible through both programmatic and visual interfaces
 
 Example Usage:
 ```typescript

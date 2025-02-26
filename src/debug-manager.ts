@@ -1,7 +1,8 @@
 import { FluentState } from "./fluent-state";
 import { State } from "./state";
-import { LogLevel, LogEntry, LogConfig, PerformanceMetric, TransitionHistoryEntry, GraphConfig } from "./types";
+import { LogLevel, LogEntry, LogConfig, PerformanceMetric, TransitionHistoryEntry, GraphConfig, TimeTravelOptions, TimelineOptions } from "./types";
 import { TransitionHistory } from "./transition-history";
+import { TimeTravel } from "./time-travel";
 
 /**
  * Manages debugging capabilities for FluentState including logging, metrics, and visualization.
@@ -15,6 +16,7 @@ export class DebugManager {
   private logFormat: (entry: LogEntry) => string = this.defaultLogFormat;
   private localHistory?: TransitionHistory;
   private historyEnabled: boolean = false;
+  private _timeTravel?: TimeTravel;
 
   // Store performance metrics
   private metrics: {
@@ -1744,5 +1746,58 @@ ${dot}`;
     // Simplify this method to avoid accessing internal structures that might
     // interfere with serialization/deserialization mechanisms
     return "";
+  }
+
+  /**
+   * Configure time travel debugging
+   *
+   * @param options - Configuration options for time travel debugging
+   * @returns The DebugManager instance for chaining
+   */
+  configureTimeTravel(options: TimeTravelOptions = {}): DebugManager {
+    const history = this.getHistory();
+
+    if (!history) {
+      this.warn("Time travel debugging requires history tracking. Enabling history tracking with default options.");
+      this.enableHistoryTracking(true);
+    }
+
+    // Initialize time travel with history
+    this._timeTravel = new TimeTravel(this.fluentState, this.getHistory()!, options);
+
+    this.info("Time travel debugging configured", options);
+    return this;
+  }
+
+  /**
+   * Get access to time travel debugging functionality
+   *
+   * @returns The TimeTravel instance or undefined if not configured
+   */
+  getTimeTravel(): TimeTravel | undefined {
+    if (!this._timeTravel) {
+      // Initialize with default options if not already configured
+      return this.configureTimeTravel()._timeTravel;
+    }
+
+    return this._timeTravel;
+  }
+
+  /**
+   * Generate a timeline visualization of state transitions
+   *
+   * @param options - Options for customizing the timeline visualization
+   * @returns A string containing the timeline representation
+   */
+  generateTimeline(options: TimelineOptions = {}): string {
+    const timeTravel = this.getTimeTravel();
+
+    if (!timeTravel) {
+      this.warn("Time travel is not configured. Configuring with default options.");
+      this.configureTimeTravel();
+      return this.getTimeTravel()!.generateTimeline(options);
+    }
+
+    return timeTravel.generateTimeline(options);
   }
 }

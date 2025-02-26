@@ -16,10 +16,13 @@ import {
   GraphConfig,
   SerializedTransitionGroup,
   AutoTransitionConfig,
+  TimeSnapshot,
+  TimelineOptions,
 } from "./types";
 import { TransitionHistory } from "./transition-history";
 import { TransitionGroup } from "./transition-group";
 import { DebugManager } from "./debug-manager";
+import { TimeTravel } from "./time-travel";
 
 /**
  * The main class for building and managing a state machine.
@@ -59,6 +62,9 @@ export class FluentState {
    */
   private _graphConfig?: DebugConfig["generateGraph"];
 
+  /** Whether the state machine is in time travel mode */
+  private _inTimeTravelMode: boolean = false;
+
   /**
    * Creates a new FluentState instance.
    *
@@ -90,59 +96,48 @@ export class FluentState {
   }
 
   /**
-   * Configures debug settings for the state machine.
+   * Configure debug settings for the state machine
    *
-   * @param config - Debug configuration options
-   * @returns The FluentState instance for chaining
+   * @param config - Configuration options for debugging
    */
-  configureDebug(config: DebugConfig): FluentState {
-    // Configure logging
-    this.debug.configureLogging({
-      logLevel: config.logLevel || "none",
-      measurePerformance: config.measurePerformance || false,
-      logFormat: config.logFormat,
-    });
+  private configureDebug(config: DebugConfig): void {
+    if (config.logLevel !== undefined) {
+      this.debug.setLogLevel(config.logLevel);
+    }
 
-    // Add custom log handlers if provided
+    if (config.measurePerformance !== undefined) {
+      this.debug.enablePerformanceMeasurement(config.measurePerformance);
+    }
+
     if (config.logHandlers && Array.isArray(config.logHandlers)) {
       config.logHandlers.forEach((handler) => {
         this.debug.addLogger(handler);
       });
     }
 
-    // Configure history tracking if requested in debug config
-    if (config.keepHistory && !this.historyEnabled) {
-      this.enableHistory({
+    if (config.keepHistory !== undefined) {
+      this.debug.enableHistoryTracking(config.keepHistory, {
         maxSize: config.historySize,
         includeContext: config.includeContextInHistory,
         contextFilter: config.contextFilter,
       });
-    } else if (config.keepHistory && this.historyEnabled && this.history) {
-      // Update existing history configuration
-      if (config.historySize !== undefined) {
-        this.history.setMaxSize(config.historySize);
-      }
-
-      if (config.includeContextInHistory !== undefined) {
-        this.history.includeContextData(config.includeContextInHistory);
-      }
-
-      if (config.contextFilter !== undefined) {
-        this.history.setContextFilter(config.contextFilter);
-      }
+      this.historyEnabled = config.keepHistory;
     }
 
-    // Set up config export functionality if provided
-    if (config.exportConfig) {
-      this._configExportFormat = typeof config.exportConfig === "string" ? config.exportConfig : "json";
-    }
-
-    // Configure graph generation settings if provided
-    if (config.generateGraph) {
+    if (config.generateGraph !== undefined) {
       this._graphConfig = config.generateGraph;
     }
 
-    return this;
+    // Configure time travel if enabled
+    if (config.timeTravel !== undefined) {
+      // If history is not enabled yet but needed for time travel, enable it
+      if (!this.historyEnabled) {
+        this.enableHistory();
+      }
+
+      // Configure time travel with options
+      this.debug.configureTimeTravel(config.timeTravel);
+    }
   }
 
   /**
@@ -1045,6 +1040,92 @@ export class FluentState {
     }
 
     return this;
+  }
+
+  /**
+   * Access time travel debugging capabilities
+   *
+   * @returns The TimeTravel instance
+   */
+  getTimeTravel(): TimeTravel {
+    return this.debug.getTimeTravel()!;
+  }
+
+  /**
+   * Generate a timeline visualization of state transitions
+   *
+   * @param options - Options for customizing the timeline visualization
+   * @returns A string containing the timeline representation
+   */
+  generateTimeline(options?: TimelineOptions): string {
+    if (!this.history) {
+      console.warn("Timeline generation requires history tracking. Enabling history with default options.");
+      this.enableHistory();
+    }
+
+    return this.debug.generateTimeline(options || {});
+  }
+
+  /**
+   * Checks if the state machine is in time travel mode
+   *
+   * @returns True if the state machine is in time travel mode
+   */
+  isInTimeTravelMode(): boolean {
+    const timeTravel = this.debug.getTimeTravel();
+    return timeTravel ? timeTravel.isTimeTravelMode() : false;
+  }
+
+  /**
+   * Travel to a specific point in history by index
+   *
+   * @param index - The index in history to travel to
+   * @returns The snapshot representing the state at that point in history
+   */
+  travelToHistoryIndex(index: number): TimeSnapshot | null {
+    const timeTravel = this.getTimeTravel();
+    return timeTravel.travelToIndex(index);
+  }
+
+  /**
+   * Travel to a specific point in history by timestamp
+   *
+   * @param timestamp - The timestamp to travel to
+   * @returns The snapshot representing the state at that point in history
+   */
+  travelToTimestamp(timestamp: number): TimeSnapshot | null {
+    const timeTravel = this.getTimeTravel();
+    return timeTravel.travelToTimestamp(timestamp);
+  }
+
+  /**
+   * Move to the next state in history (more recent)
+   *
+   * @returns The next state snapshot or null if at the end of history
+   */
+  nextHistoryState(): TimeSnapshot | null {
+    const timeTravel = this.getTimeTravel();
+    return timeTravel.next();
+  }
+
+  /**
+   * Move to the previous state in history (less recent)
+   *
+   * @returns The previous state snapshot or null if at the beginning of history
+   */
+  previousHistoryState(): TimeSnapshot | null {
+    const timeTravel = this.getTimeTravel();
+    return timeTravel.previous();
+  }
+
+  /**
+   * Return to the current (most recent) state, exiting time travel mode
+   *
+   * @returns True if successfully returned to current state
+   */
+  returnToCurrentState(): boolean {
+    const timeTravel = this.getTimeTravel();
+    return timeTravel.returnToCurrent();
   }
 }
 
