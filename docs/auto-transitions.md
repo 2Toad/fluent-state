@@ -774,3 +774,90 @@ navigation
    - Avoid unnecessary state updates
    - Clean up subscriptions when components unmount
 
+## Serialization and Deserialization
+
+Auto-transitions can be serialized as part of transition groups. When serializing and deserializing, the priority configuration of auto-transitions is preserved, ensuring that your transition evaluation order remains consistent.
+
+```typescript
+// Create a state machine with prioritized transitions
+const fs = new FluentState<AppState>();
+const group = fs.createGroup("main");
+
+group.from("idle")
+  .to<AppState>("active", {
+    condition: (_, ctx) => ctx.isActive,
+    priority: 3  // Higher priority
+  })
+  .or<AppState>("waiting", {
+    condition: (_, ctx) => ctx.isWaiting,
+    priority: 2  // Medium priority
+  })
+  .or<AppState>("error", {
+    condition: (_, ctx) => ctx.hasError,
+    priority: 1  // Lower priority
+  });
+
+// Serialize the transition group
+const serialized = group.exportJSON();
+
+// Later, deserialize with condition functions
+const newFs = new FluentState<AppState>();
+const conditionMap = {
+  isActive: (_, ctx: AppState) => ctx.isActive,
+  isWaiting: (_, ctx: AppState) => ctx.isWaiting,
+  hasError: (_, ctx: AppState) => ctx.hasError
+};
+
+newFs.importGroups(serialized, conditionMap);
+
+// Priorities are preserved during deserialization
+// Transitions will be evaluated in the same order: active (3) -> waiting (2) -> error (1)
+```
+
+When using nested condition maps with the `importGroups` method, the library will search through all levels to find the matching condition function:
+
+```typescript
+// Using nested condition maps
+const nestedConditionMap = {
+  stateChecks: {
+    isActive: (_, ctx: AppState) => ctx.isActive,
+    isWaiting: (_, ctx: AppState) => ctx.isWaiting,
+  },
+  errorChecks: {
+    hasError: (_, ctx: AppState) => ctx.hasError
+  }
+};
+
+// FluentState will search through all levels of the object to find the condition functions
+newFs.importGroups(serialized, nestedConditionMap);
+```
+
+### Serialization Format
+
+The serialized format of auto-transitions includes priority configurations:
+
+```typescript
+// Example of serialized transition with priority
+{
+  "from": "idle",
+  "to": "active",
+  "condition": "isActive",  // Condition function name to be matched in conditionMap
+  "priority": 3,            // Priority is preserved
+  "tags": ["important"]     // Tags are also preserved
+}
+```
+
+### Best Practices for Serialization
+
+1. **Consistent Condition Names**
+   - Use descriptive names for condition functions
+   - Maintain consistency between serialization and deserialization
+
+2. **Document Condition Maps**
+   - Keep a clear record of condition function names and their implementations
+   - Consider storing condition maps alongside serialized state for documentation
+
+3. **Version Control**
+   - Consider adding version information to serialized data
+   - Plan for backward compatibility when evolving your state machine
+

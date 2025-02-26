@@ -23,6 +23,186 @@ export interface FluentStateOptions {
   historyOptions?: TransitionHistoryOptions;
   /** Configuration options for the state manager */
   stateManagerConfig?: StateManagerConfig<unknown>;
+  /** Configuration options for debugging */
+  debug?: DebugConfig;
+}
+
+/**
+ * Log levels for the debugging system
+ */
+export type LogLevel = "none" | "error" | "warn" | "info" | "debug";
+
+/**
+ * Configuration for graph visualization options
+ */
+export interface GraphConfig {
+  /**
+   * Output format for the generated graph
+   */
+  format: "mermaid" | "dot" | "svg";
+
+  /**
+   * Visualization options
+   */
+  options?: {
+    /**
+     * Whether to show transition conditions in the graph
+     */
+    showConditions?: boolean;
+
+    /**
+     * Whether to group states by their transition groups
+     */
+    groupClusters?: boolean;
+
+    /**
+     * Whether to include state metadata in the graph
+     */
+    showMetadata?: boolean;
+
+    /**
+     * Whether to highlight the current state
+     */
+    highlightCurrent?: boolean;
+
+    /**
+     * Whether to show transition history
+     */
+    showHistory?: boolean;
+
+    /**
+     * Custom styles for graph elements
+     */
+    styles?: {
+      /**
+       * Styles for transition groups
+       */
+      groups?: Record<string, string>;
+
+      /**
+       * Styles for states
+       */
+      states?: Record<string, string>;
+
+      /**
+       * Styles for transitions
+       */
+      transitions?: Record<string, string>;
+    };
+  };
+}
+
+/**
+ * Configuration for debugging and development tools
+ */
+export interface DebugConfig {
+  /** Log level for the debug manager */
+  logLevel?: LogLevel;
+
+  /** Whether to measure and collect performance metrics */
+  measurePerformance?: boolean;
+
+  /** Custom log formatting function */
+  logFormat?: (entry: LogEntry) => string;
+
+  /** Custom log handlers to receive log entries */
+  logHandlers?: ((entry: LogEntry) => void)[];
+
+  /** Whether to keep transition history */
+  keepHistory?: boolean;
+
+  /** Maximum number of transition history entries to keep */
+  historySize?: number;
+
+  /** Whether to include context data in transition history */
+  includeContextInHistory?: boolean;
+
+  /** Filter function to remove sensitive data from context before storing in history */
+  contextFilter?: (context: unknown) => unknown;
+
+  /**
+   * Configuration for exporting the state machine
+   * Can be:
+   * - A string specifying the format ('json', 'yaml', or 'js')
+   * - true to enable with default settings
+   * - A function to completely customize the export process
+   */
+  exportConfig?: "json" | "yaml" | "js" | boolean | (() => string);
+
+  /**
+   * Configuration for graph visualization
+   */
+  generateGraph?: GraphConfig;
+
+  /** Configuration for time travel debugging */
+  timeTravel?: TimeTravelOptions;
+
+  /** Whether to automatically validate the state machine and warn about issues */
+  autoValidate?: boolean;
+
+  /** Only validate when state changes (not when states are added) */
+  validateOnStateChangesOnly?: boolean;
+
+  /** Configuration options for validation */
+  validateOptions?: {
+    /** Minimum severity level for warnings */
+    severity?: "info" | "warn" | "error";
+    /** Specific types of warnings to check for */
+    types?: StateWarningType[];
+  };
+}
+
+/**
+ * Configuration options for debugging logs
+ */
+export interface LogConfig {
+  /** Log level to use */
+  logLevel?: LogLevel;
+  /** Whether to measure and log performance metrics */
+  measurePerformance?: boolean;
+  /** Custom log format function */
+  logFormat?: (entry: LogEntry) => string;
+  /** Whether to automatically validate the state machine */
+  autoValidate?: boolean;
+  /** Only validate when state changes (not when states are added) */
+  validateOnStateChangesOnly?: boolean;
+  /** Configuration options for validation */
+  validateOptions?: {
+    /** Minimum severity level for warnings */
+    severity?: "info" | "warn" | "error";
+    /** Specific types of warnings to check for */
+    types?: StateWarningType[];
+  };
+}
+
+/**
+ * Structure of a log entry
+ */
+export interface LogEntry {
+  /** Timestamp when the log entry was created */
+  timestamp: number;
+  /** Log level of the entry */
+  level: LogLevel;
+  /** Log message */
+  message: string;
+  /** Optional context data */
+  context?: unknown;
+}
+
+/**
+ * Structure of a performance metric
+ */
+export interface PerformanceMetric {
+  /** Timestamp when the metric was recorded */
+  timestamp: number;
+  /** Category of the metric */
+  category: "transitionEvaluation" | "conditionExecution" | "contextUpdate";
+  /** Name of the specific operation */
+  name: string;
+  /** Duration in milliseconds */
+  duration: number;
+  /** Optional additional details */
+  details?: Record<string, unknown>;
 }
 
 export type BeforeTransitionHandler = (currentState: State, nextState: string) => boolean | Promise<boolean>;
@@ -91,39 +271,6 @@ export interface AutoTransitionConfig<TContext = unknown> {
  * @template TContext - The type of context object used in the condition function.
  */
 export type AutoTransition<TContext = unknown> = (state: State, context: TContext) => boolean | Promise<boolean>;
-
-/**
- * Represents a single transition entry in the history.
- */
-export interface TransitionHistoryEntry {
-  /** The source state name */
-  from: string;
-  /** The target state name */
-  to: string;
-  /** Timestamp when the transition occurred */
-  timestamp: number;
-  /** Context data at the time of transition */
-  context: unknown;
-  /** Whether the transition was successful */
-  success: boolean;
-  /** The name of the group this transition belongs to (if any) */
-  groupName?: string;
-}
-
-/**
- * Configuration options for the transition history.
- */
-export interface TransitionHistoryOptions {
-  /** Maximum number of entries to keep in history (default: 100) */
-  maxSize?: number;
-  /** Whether to include context data in history entries (default: true) */
-  includeContext?: boolean;
-  /**
-   * Optional function to filter sensitive data from context during serialization.
-   * This function should return a sanitized version of the context.
-   */
-  contextFilter?: (context: unknown) => unknown;
-}
 
 /**
  * Options for serializing transition history to JSON.
@@ -312,4 +459,146 @@ export interface TransitionGroupMetrics {
   collectionStartTime: number;
   /** Timestamp of the last update to these metrics */
   lastUpdated: number;
+}
+
+/**
+ * Options for configuring the transition history
+ */
+export interface TransitionHistoryOptions {
+  /** Maximum number of entries to keep in history */
+  maxSize?: number;
+  /** Whether to include context data in transition records */
+  includeContext?: boolean;
+  /** Function to filter sensitive data from context before storing */
+  contextFilter?: (context: unknown) => unknown;
+}
+
+/**
+ * A single transition history entry
+ */
+export interface TransitionHistoryEntry {
+  /** The source state of the transition */
+  from: string | null;
+  /** The target state of the transition */
+  to: string;
+  /** Timestamp when the transition occurred */
+  timestamp: number;
+  /** Context data at the time of transition (if includeContext is true) */
+  context?: unknown;
+  /** Whether the transition was successful */
+  success: boolean;
+  /** Optional group name the transition belongs to */
+  group?: string;
+  /** Optional metadata for the transition */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Configuration options for time travel debugging
+ */
+export interface TimeTravelOptions {
+  /** Maximum number of snapshots to keep for time travel */
+  maxSnapshots?: number;
+  /** Whether to apply snapshots automatically when created */
+  autoApply?: boolean;
+  /** Whether to track context changes between snapshots */
+  trackContextChanges?: boolean;
+}
+
+/**
+ * Represents a snapshot of state at a specific point in time
+ */
+export interface TimeSnapshot {
+  /** The state name at this point in time */
+  state: string;
+  /** The context data at this point in time */
+  context: unknown;
+  /** The timestamp when this snapshot was created */
+  timestamp: number;
+  /** Optional index in the transition history */
+  historyIndex?: number;
+  /** Optional description of this snapshot */
+  description?: string;
+  /** Metadata for this snapshot */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Options for generating timeline visualizations
+ */
+export interface TimelineOptions {
+  /** Format for the generated timeline */
+  format?: "mermaid" | "dot" | "svg" | "json";
+  /** Whether to include context data in the timeline */
+  includeContext?: boolean;
+  /** Maximum number of transitions to include */
+  maxTransitions?: number;
+  /** Custom styling for the timeline visualization */
+  styles?: {
+    /** Style for the current state */
+    currentState?: string;
+    /** Style for successful transitions */
+    successfulTransition?: string;
+    /** Style for failed transitions */
+    failedTransition?: string;
+    /** Style for the timeline track */
+    track?: string;
+  };
+}
+
+/**
+ * Difference between two context objects in a time snapshot
+ */
+export interface ContextDiff {
+  /** Properties that were added in the newer context */
+  added: Record<string, unknown>;
+  /** Properties that were removed in the newer context */
+  removed: Record<string, unknown>;
+  /** Properties that were changed between contexts */
+  changed: Record<
+    string,
+    {
+      /** The value in the older context */
+      from: unknown;
+      /** The value in the newer context */
+      to: unknown;
+    }
+  >;
+  /** The older timestamp this diff compares from */
+  fromTimestamp: number;
+  /** The newer timestamp this diff compares to */
+  toTimestamp: number;
+}
+
+/**
+ * Warning types for state machine validation
+ */
+export type StateWarningType =
+  | "unreachable-state" // State that cannot be reached from any other state
+  | "conflicting-transition" // Transitions that might conflict with each other
+  | "dead-end-state" // State with no outgoing transitions
+  | "redundant-transition" // Multiple transitions between the same states
+  | "circular-transition" // Transitions that form a circular path with no exit
+  | "unused-group" // Transition group with no transitions
+  | "incomplete-transition" // Transition missing source or target state
+  | "overlapping-conditions"; // Multiple auto-transitions with potentially overlapping conditions
+
+/**
+ * Warning object for state machine validation
+ */
+export interface StateWarning {
+  /** Type of the warning */
+  type: StateWarningType;
+  /** Description of the warning */
+  description: string;
+  /** Severity of the warning (info, warn, error) */
+  severity: "info" | "warn" | "error";
+  /** States involved in the warning */
+  states?: string[];
+  /** Transitions involved in the warning (from-to pairs) */
+  transitions?: Array<{ from: string; to: string }>;
+  /** Groups involved in the warning */
+  groups?: string[];
+  /** Additional metadata about the warning */
+  metadata?: Record<string, unknown>;
 }

@@ -1282,7 +1282,7 @@ describe("Transition Groups", () => {
       await fs.transition("authenticated");
 
       // Verify group name is recorded in history
-      const history = fs.history!.getAll();
+      const history = fs.history!.getHistory();
       expect(history.length).to.be.at.least(3); // Initial + 2 transitions
 
       // Check the most recent transition
@@ -1290,7 +1290,7 @@ describe("Transition Groups", () => {
       expect(lastTransition).to.exist;
       expect(lastTransition!.from).to.equal("authenticating");
       expect(lastTransition!.to).to.equal("authenticated");
-      expect(lastTransition!.groupName).to.equal("auth");
+      expect(lastTransition!.group).to.equal("auth");
     });
 
     it("should record group name for failed transitions", async () => {
@@ -1318,7 +1318,7 @@ describe("Transition Groups", () => {
       expect(lastTransition!.from).to.equal("idle");
       expect(lastTransition!.to).to.equal("authenticating");
       expect(lastTransition!.success).to.equal(false);
-      expect(lastTransition!.groupName).to.equal("auth");
+      expect(lastTransition!.group).to.equal("auth");
     });
 
     it("should get transitions for a specific group", async () => {
@@ -1390,10 +1390,10 @@ describe("Transition Groups", () => {
       // Verify initial state is recorded with group name
       const initialTransition = fs.history!.getLastTransition();
       expect(initialTransition).to.exist;
-      expect(initialTransition!.from).to.equal("null");
+      expect(initialTransition!.from).to.be.null;
       expect(initialTransition!.to).to.equal("idle");
       expect(initialTransition!.success).to.equal(true);
-      expect(initialTransition!.groupName).to.equal("workflow");
+      expect(initialTransition!.group).to.equal("workflow");
     });
   });
 
