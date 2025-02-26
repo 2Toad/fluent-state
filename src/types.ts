@@ -136,18 +136,43 @@ export interface DebugConfig {
 
   /** Configuration for time travel debugging */
   timeTravel?: TimeTravelOptions;
+
+  /** Whether to automatically validate the state machine and warn about issues */
+  autoValidate?: boolean;
+
+  /** Only validate when state changes (not when states are added) */
+  validateOnStateChangesOnly?: boolean;
+
+  /** Configuration options for validation */
+  validateOptions?: {
+    /** Minimum severity level for warnings */
+    severity?: "info" | "warn" | "error";
+    /** Specific types of warnings to check for */
+    types?: StateWarningType[];
+  };
 }
 
 /**
- * Configuration for logging system
+ * Configuration options for debugging logs
  */
 export interface LogConfig {
-  /** Log level threshold */
+  /** Log level to use */
   logLevel?: LogLevel;
   /** Whether to measure and log performance metrics */
   measurePerformance?: boolean;
-  /** Custom log formatter function */
+  /** Custom log format function */
   logFormat?: (entry: LogEntry) => string;
+  /** Whether to automatically validate the state machine */
+  autoValidate?: boolean;
+  /** Only validate when state changes (not when states are added) */
+  validateOnStateChangesOnly?: boolean;
+  /** Configuration options for validation */
+  validateOptions?: {
+    /** Minimum severity level for warnings */
+    severity?: "info" | "warn" | "error";
+    /** Specific types of warnings to check for */
+    types?: StateWarningType[];
+  };
 }
 
 /**
@@ -543,4 +568,37 @@ export interface ContextDiff {
   fromTimestamp: number;
   /** The newer timestamp this diff compares to */
   toTimestamp: number;
+}
+
+/**
+ * Warning types for state machine validation
+ */
+export type StateWarningType =
+  | "unreachable-state" // State that cannot be reached from any other state
+  | "conflicting-transition" // Transitions that might conflict with each other
+  | "dead-end-state" // State with no outgoing transitions
+  | "redundant-transition" // Multiple transitions between the same states
+  | "circular-transition" // Transitions that form a circular path with no exit
+  | "unused-group" // Transition group with no transitions
+  | "incomplete-transition" // Transition missing source or target state
+  | "overlapping-conditions"; // Multiple auto-transitions with potentially overlapping conditions
+
+/**
+ * Warning object for state machine validation
+ */
+export interface StateWarning {
+  /** Type of the warning */
+  type: StateWarningType;
+  /** Description of the warning */
+  description: string;
+  /** Severity of the warning (info, warn, error) */
+  severity: "info" | "warn" | "error";
+  /** States involved in the warning */
+  states?: string[];
+  /** Transitions involved in the warning (from-to pairs) */
+  transitions?: Array<{ from: string; to: string }>;
+  /** Groups involved in the warning */
+  groups?: string[];
+  /** Additional metadata about the warning */
+  metadata?: Record<string, unknown>;
 }

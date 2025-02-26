@@ -1,6 +1,18 @@
 import { FluentState } from "./fluent-state";
 import { State } from "./state";
-import { LogLevel, LogEntry, LogConfig, PerformanceMetric, TransitionHistoryEntry, GraphConfig, TimeTravelOptions, TimelineOptions } from "./types";
+import {
+  LogLevel,
+  LogEntry,
+  LogConfig,
+  PerformanceMetric,
+  TransitionHistoryEntry,
+  GraphConfig,
+  TimeTravelOptions,
+  TimelineOptions,
+  StateWarning,
+  StateWarningType,
+  Lifecycle,
+} from "./types";
 import { TransitionHistory } from "./transition-history";
 import { TimeTravel } from "./time-travel";
 
@@ -52,7 +64,101 @@ export class DebugManager {
       this.logFormat = config.logFormat;
     }
 
+    // Check if automatic validation is enabled
+    if (config.autoValidate) {
+      // Run initial validation
+      this.validateAndLogWarnings(config.validateOptions);
+
+      // Set up observers for state changes to trigger validation
+      if (!config.validateOnStateChangesOnly) {
+        // We'll use a state count check to detect new states
+        this._setupStateAddedValidation(config.validateOptions);
+      }
+
+      // Validate after transitions
+      this.fluentState.observer.add(
+        Lifecycle.AfterTransition,
+        (
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          _prevState,
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          _currentState,
+        ) => {
+          this.validateAndLogWarnings(config.validateOptions);
+          return;
+        },
+      );
+    }
+
     return this;
+  }
+
+  /**
+   * Sets up periodic validation to detect when states are added
+   *
+   * @param options - Validation options
+   */
+  private _setupStateAddedValidation(options?: { severity?: "info" | "warn" | "error"; types?: StateWarningType[] }): void {
+    let lastStateCount = this.fluentState.states.size;
+
+    // Log any initial warnings
+    this.validateAndLogWarnings(options);
+
+    // Use the transition lifecycle to also check for new states
+    this.fluentState.observer.add(
+      Lifecycle.AfterTransition,
+      (
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        _prevState,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        _currentState,
+      ) => {
+        const currentStateCount = this.fluentState.states.size;
+
+        if (currentStateCount > lastStateCount) {
+          // New states have been added
+          this.validateAndLogWarnings(options);
+          lastStateCount = currentStateCount;
+        }
+
+        return;
+      },
+    );
+
+    // Also check when states are added directly
+    const originalAddState = this.fluentState._addState;
+    (this.fluentState as { _addState: (name: string) => State })._addState = (name: string) => {
+      const state = originalAddState.call(this.fluentState, name);
+      // Validate after a new state is added
+      this.validateAndLogWarnings(options);
+      lastStateCount = this.fluentState.states.size;
+      return state;
+    };
+  }
+
+  /**
+   * Run validation and log any warnings based on configuration
+   *
+   * @param options - Validation options
+   */
+  private validateAndLogWarnings(options?: { severity?: "info" | "warn" | "error"; types?: StateWarningType[] }): void {
+    const warnings = this.validateStateMachine(options);
+
+    // Log the warnings
+    for (const warning of warnings) {
+      const message = `State Machine Warning: ${warning.description}`;
+      switch (warning.severity) {
+        case "info":
+          this.info(message, warning);
+          break;
+        case "warn":
+          this.warn(message, warning);
+          break;
+        case "error":
+          this.error(message, warning);
+          break;
+      }
+    }
   }
 
   /**
@@ -977,7 +1083,7 @@ ${indentStr}enableHistory: true`;
     const jsonStr = JSON.stringify(config, null, indent);
     const lines = jsonStr.split("\n");
 
-    // Insert comments at key sections
+    // Insert comments before major sections
     let result = "// FluentState configuration - Generated on: " + new Date().toISOString() + "\n";
     result += "// This configuration can be used to recreate an identical state machine\n\n";
 
@@ -1799,5 +1905,333 @@ ${dot}`;
     }
 
     return timeTravel.generateTimeline(options);
+  }
+
+  /**
+   * Validates the state machine and detects potential issues.
+   * Performs various checks to identify problems such as unreachable states,
+   * conflicting transitions, or circular dependencies.
+   *
+   * @param options - Optional configuration for validation
+   * @returns Array of warning objects with details about issues found
+   */
+  validateStateMachine(options?: { severity?: "info" | "warn" | "error"; types?: StateWarningType[] }): StateWarning[] {
+    const warnings: StateWarning[] = [];
+    const { severity, types } = options || {};
+
+    // Get all states and create a reachability map
+    const stateNames = Array.from(this.fluentState.states.keys());
+
+    // Build state map for quick lookups
+    const statesMap = new Map<string, State>();
+
+    for (const state of this.fluentState.states.values()) {
+      statesMap.set(state.name, state);
+    }
+
+    // Get all transitions
+    const transitionMap = new Map<string, Set<string>>();
+    const reverseTransitionMap = new Map<string, Set<string>>();
+
+    // Build transition maps - both forward and reverse for reachability analysis
+    for (const [stateName, state] of this.fluentState.states.entries()) {
+      if (!transitionMap.has(stateName)) {
+        transitionMap.set(stateName, new Set());
+      }
+
+      for (const targetState of state.transitions) {
+        transitionMap.get(stateName)!.add(targetState);
+
+        // Add to reverse map for reachability analysis
+        if (!reverseTransitionMap.has(targetState)) {
+          reverseTransitionMap.set(targetState, new Set());
+        }
+        reverseTransitionMap.get(targetState)!.add(stateName);
+      }
+    }
+
+    // Only check the requested warning types, or all types if none specified
+    const checkType = (type: StateWarningType): boolean => {
+      return !types || types.includes(type);
+    };
+
+    // 1. Check for unreachable states
+    if (checkType("unreachable-state")) {
+      // Get the initial state from FluentState options
+      // We need to get the ACTUAL initial state, not the current state
+      const initialState = (this.fluentState as unknown as { _initialState?: string })._initialState || this.fluentState.getCurrentState()?.name;
+
+      if (initialState) {
+        // First, create a set of all state names for easier checking
+        const allStates = new Set(stateNames);
+
+        // Use BFS to find all states reachable from the initial state
+        const reachableStates = new Set<string>();
+        const queue: string[] = [initialState];
+        reachableStates.add(initialState); // Mark initial state as reachable
+
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+
+          // Get all states that can be reached from the current state
+          const transitions = transitionMap.get(current);
+          if (transitions) {
+            for (const target of transitions) {
+              if (!reachableStates.has(target)) {
+                reachableStates.add(target);
+                queue.push(target);
+              }
+            }
+          }
+        }
+
+        // Find states that are in allStates but not in reachableStates
+        const unreachableStates = Array.from(allStates).filter((state) => !reachableStates.has(state));
+
+        // Add warnings for each unreachable state
+        for (const state of unreachableStates) {
+          warnings.push({
+            type: "unreachable-state",
+            description: `State "${state}" is unreachable from the initial state "${initialState}"`,
+            severity: "warn", // Use 'warn' as the default severity
+            states: [state],
+          });
+        }
+      }
+    }
+
+    // 2. Check for dead-end states
+    if (checkType("dead-end-state")) {
+      for (const state of stateNames) {
+        const transitions = transitionMap.get(state);
+        if (!transitions || transitions.size === 0) {
+          warnings.push({
+            type: "dead-end-state",
+            description: `State "${state}" is a dead end with no outgoing transitions`,
+            severity: "warn", // Use 'warn' as the default severity
+            states: [state],
+          });
+        }
+      }
+    }
+
+    // 3. Check for circular transitions with no exit
+    if (checkType("circular-transition")) {
+      const circularGroups = this.findCircularTransitionGroups(transitionMap);
+
+      for (const group of circularGroups) {
+        // Check if any state in the group has a transition to outside the group
+        let hasExit = false;
+        for (const state of group) {
+          const transitions = transitionMap.get(state);
+          if (transitions) {
+            for (const target of transitions) {
+              if (!group.includes(target)) {
+                hasExit = true;
+                break;
+              }
+            }
+          }
+          if (hasExit) break;
+        }
+
+        if (!hasExit) {
+          warnings.push({
+            type: "circular-transition",
+            description: `States ${group.join(", ")} form a circular transition path with no exit`,
+            severity: "warn", // Use 'warn' as the default severity
+            states: group,
+            transitions: this.getTransitionsInCircle(group, transitionMap),
+          });
+        }
+      }
+    }
+
+    // 4. Check for redundant transitions
+    if (checkType("redundant-transition")) {
+      const groupedTransitions = new Map<string, Map<string, number>>();
+
+      // Count transitions between each pair of states
+      for (const [fromState, targets] of transitionMap.entries()) {
+        if (!groupedTransitions.has(fromState)) {
+          groupedTransitions.set(fromState, new Map());
+        }
+
+        for (const toState of targets) {
+          const count = groupedTransitions.get(fromState)!.get(toState) || 0;
+          groupedTransitions.get(fromState)!.set(toState, count + 1);
+        }
+      }
+
+      // Find redundant transitions
+      for (const [fromState, targets] of groupedTransitions.entries()) {
+        for (const [toState, count] of targets.entries()) {
+          if (count > 1) {
+            warnings.push({
+              type: "redundant-transition",
+              description: `There are ${count} redundant transitions from "${fromState}" to "${toState}"`,
+              severity: "info", // Use 'info' as the default severity
+              transitions: [{ from: fromState, to: toState }],
+            });
+          }
+        }
+      }
+    }
+
+    // 5. Check for conflicting transitions
+    if (checkType("conflicting-transition") && this.fluentState.groups.size > 0) {
+      const transitions = new Map<string, Map<string, Set<string>>>();
+
+      // Group transitions by source-target state pairs and collect groups they belong to
+      for (const group of this.fluentState.groups.values()) {
+        const groupTransitions = group.getAllTransitions();
+
+        for (const [fromState, toState] of groupTransitions) {
+          if (!transitions.has(fromState)) {
+            transitions.set(fromState, new Map());
+          }
+
+          if (!transitions.get(fromState)!.has(toState)) {
+            transitions.get(fromState)!.set(toState, new Set());
+          }
+
+          transitions.get(fromState)!.get(toState)!.add(group.getFullName());
+        }
+      }
+
+      // Find transitions with multiple groups
+      for (const [fromState, targets] of transitions.entries()) {
+        for (const [toState, groups] of targets.entries()) {
+          if (groups.size > 1) {
+            warnings.push({
+              type: "conflicting-transition",
+              description: `Transition from "${fromState}" to "${toState}" exists in multiple groups: ${Array.from(groups).join(", ")}`,
+              severity: "info", // Use 'info' as the default severity
+              transitions: [{ from: fromState, to: toState }],
+              groups: Array.from(groups),
+            });
+          }
+        }
+      }
+    }
+
+    // 6. Check for unused groups
+    if (checkType("unused-group")) {
+      for (const group of this.fluentState.groups.values()) {
+        if (group.getAllTransitions().length === 0) {
+          warnings.push({
+            type: "unused-group",
+            description: `Transition group "${group.getFullName()}" has no transitions defined`,
+            severity: "info", // Use 'info' as the default severity
+            groups: [group.getFullName()],
+          });
+        }
+      }
+    }
+
+    // 7. Check for overlapping condition transitions in the same state
+    if (checkType("overlapping-conditions")) {
+      for (const state of this.fluentState.states.values()) {
+        // Access private autoTransitions field if possible (might need refactoring)
+        const autoTransitions = (state as unknown as { autoTransitions?: Array<unknown> }).autoTransitions;
+        if (Array.isArray(autoTransitions) && autoTransitions.length > 1) {
+          warnings.push({
+            type: "overlapping-conditions",
+            description: `State "${state.name}" has multiple auto-transitions that may have overlapping conditions`,
+            severity: "info", // Use 'info' as the default severity
+            states: [state.name],
+          });
+        }
+      }
+    }
+
+    // Filter warnings by severity and type if requested
+    let filteredWarnings = warnings;
+
+    // Filter by severity if specified
+    if (severity) {
+      // Only include warnings with the specified severity
+      filteredWarnings = filteredWarnings.filter((warning) => {
+        return warning.severity === severity;
+      });
+    }
+
+    // Filter by type if specified
+    if (types && types.length > 0) {
+      filteredWarnings = filteredWarnings.filter((warning) => types.includes(warning.type));
+    }
+
+    return filteredWarnings;
+  }
+
+  /**
+   * Finds groups of states that form circular transition paths.
+   *
+   * @param transitionMap - Map of states to their outgoing transitions
+   * @returns Array of circular transition groups
+   */
+  private findCircularTransitionGroups(transitionMap: Map<string, Set<string>>): string[][] {
+    const visited = new Set<string>();
+    const inStack = new Set<string>();
+    const circularGroups: string[][] = [];
+
+    const dfs = (node: string, path: string[] = []): boolean => {
+      if (inStack.has(node)) {
+        // Found a cycle, extract the circular part
+        const cycleStart = path.indexOf(node);
+        circularGroups.push(path.slice(cycleStart));
+        return true;
+      }
+
+      if (visited.has(node)) {
+        return false;
+      }
+
+      visited.add(node);
+      inStack.add(node);
+      path.push(node);
+
+      const neighbors = transitionMap.get(node) || new Set();
+      for (const next of neighbors) {
+        if (dfs(next, [...path])) {
+          // Let exploration continue even after finding a cycle
+        }
+      }
+
+      inStack.delete(node);
+      return false;
+    };
+
+    // Run DFS from each unvisited node
+    for (const node of transitionMap.keys()) {
+      if (!visited.has(node)) {
+        dfs(node);
+      }
+    }
+
+    return circularGroups;
+  }
+
+  /**
+   * Gets the transitions that form a circular path.
+   *
+   * @param states - The states in the circular path
+   * @param transitionMap - Map of states to their outgoing transitions
+   * @returns Array of from-to transition pairs
+   */
+  private getTransitionsInCircle(states: string[], transitionMap: Map<string, Set<string>>): Array<{ from: string; to: string }> {
+    const transitions: Array<{ from: string; to: string }> = [];
+
+    for (let i = 0; i < states.length; i++) {
+      const from = states[i];
+      const to = states[(i + 1) % states.length];
+
+      // Confirm the transition exists
+      if (transitionMap.get(from)?.has(to)) {
+        transitions.push({ from, to });
+      }
+    }
+
+    return transitions;
   }
 }

@@ -18,6 +18,8 @@ import {
   AutoTransitionConfig,
   TimeSnapshot,
   TimelineOptions,
+  StateWarningType,
+  StateWarning,
 } from "./types";
 import { TransitionHistory } from "./transition-history";
 import { TransitionGroup } from "./transition-group";
@@ -37,6 +39,9 @@ export class FluentState {
 
   /** The current state of the state machine */
   state: State;
+
+  /** The initial state name from options */
+  private _initialState?: string;
 
   /** The observer for handling lifecycle events */
   readonly observer: Observer = new Observer();
@@ -74,6 +79,9 @@ export class FluentState {
     this.historyEnabled = options.enableHistory ?? false;
     this.stateManagerConfig = options.stateManagerConfig;
 
+    // Store the initial state name
+    this._initialState = options.initialState;
+
     // Initialize the debug manager
     this.debug = new DebugManager(this);
 
@@ -96,48 +104,69 @@ export class FluentState {
   }
 
   /**
-   * Configure debug settings for the state machine
+   * Configure the debug manager with the provided settings.
    *
-   * @param config - Configuration options for debugging
+   * @param config - Debug configuration settings.
+   * @returns The FluentState instance for method chaining.
    */
-  private configureDebug(config: DebugConfig): void {
+  configureDebug(config: DebugConfig = {}): FluentState {
     if (config.logLevel !== undefined) {
-      this.debug.setLogLevel(config.logLevel);
+      this.debug.configureLogging({ logLevel: config.logLevel });
     }
 
     if (config.measurePerformance !== undefined) {
-      this.debug.enablePerformanceMeasurement(config.measurePerformance);
+      this.debug.configureLogging({ measurePerformance: config.measurePerformance });
     }
 
-    if (config.logHandlers && Array.isArray(config.logHandlers)) {
-      config.logHandlers.forEach((handler) => {
+    if (config.logFormat) {
+      this.debug.configureLogging({ logFormat: config.logFormat });
+    }
+
+    // Add custom log handlers
+    if (Array.isArray(config.logHandlers)) {
+      for (const handler of config.logHandlers) {
         this.debug.addLogger(handler);
-      });
+      }
     }
 
-    if (config.keepHistory !== undefined) {
-      this.debug.enableHistoryTracking(config.keepHistory, {
-        maxSize: config.historySize,
-        includeContext: config.includeContextInHistory,
-        contextFilter: config.contextFilter,
-      });
-      this.historyEnabled = config.keepHistory;
-    }
+    // Configure history if specified
+    if (config.keepHistory || config.historySize !== undefined || config.includeContextInHistory !== undefined) {
+      const options: { maxSize?: number; includeContext?: boolean; contextFilter?: (context: unknown) => unknown } = {};
 
-    if (config.generateGraph !== undefined) {
-      this._graphConfig = config.generateGraph;
-    }
-
-    // Configure time travel if enabled
-    if (config.timeTravel !== undefined) {
-      // If history is not enabled yet but needed for time travel, enable it
-      if (!this.historyEnabled) {
-        this.enableHistory();
+      if (config.historySize !== undefined) {
+        options.maxSize = config.historySize;
       }
 
-      // Configure time travel with options
+      if (config.includeContextInHistory !== undefined) {
+        options.includeContext = config.includeContextInHistory;
+      }
+
+      if (config.contextFilter) {
+        options.contextFilter = config.contextFilter;
+      }
+
+      this.debug.enableHistoryTracking(config.keepHistory !== false, options);
+    }
+
+    // Configure time travel if specified
+    if (config.timeTravel) {
+      // Make sure history is enabled for time travel
+      if (!this.historyEnabled && !config.keepHistory) {
+        this.debug.enableHistoryTracking(true);
+      }
       this.debug.configureTimeTravel(config.timeTravel);
     }
+
+    // Configure automatic validation if specified
+    if (config.autoValidate !== undefined) {
+      this.debug.configureLogging({
+        autoValidate: config.autoValidate,
+        validateOnStateChangesOnly: config.validateOnStateChangesOnly,
+        validateOptions: config.validateOptions,
+      });
+    }
+
+    return this;
   }
 
   /**
@@ -1126,6 +1155,38 @@ export class FluentState {
   returnToCurrentState(): boolean {
     const timeTravel = this.getTimeTravel();
     return timeTravel.returnToCurrent();
+  }
+
+  /**
+   * Validates the state machine and detects potential issues.
+   * Performs various checks to identify problems such as unreachable states,
+   * conflicting transitions, or circular dependencies.
+   *
+   * @param options - Optional configuration for validation
+   * @returns Array of warning objects with details about issues found
+   */
+  validateStateMachine(options?: { severity?: "info" | "warn" | "error"; types?: StateWarningType[]; logWarnings?: boolean }): StateWarning[] {
+    const warnings = this.debug.validateStateMachine(options);
+
+    // Optionally log the warnings
+    if (options?.logWarnings) {
+      for (const warning of warnings) {
+        const message = `State Machine Warning: ${warning.description}`;
+        switch (warning.severity) {
+          case "info":
+            this.debug.info(message, warning);
+            break;
+          case "warn":
+            this.debug.warn(message, warning);
+            break;
+          case "error":
+            this.debug.error(message, warning);
+            break;
+        }
+      }
+    }
+
+    return warnings;
   }
 }
 

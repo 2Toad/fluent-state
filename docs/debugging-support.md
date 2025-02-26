@@ -394,6 +394,136 @@ myStateMachine.start();
 */
 ```
 
+## Warning System
+
+The Warning System helps identify potential issues in your state machine configuration, such as unreachable states, dead-end states, or conflicting transitions. This validation system ensures the structural integrity and usability of your state machines.
+
+### Automatic Validation
+
+You can enable automatic validation when creating a FluentState instance:
+
+```typescript
+const machine = new FluentState({
+  initialState: 'idle',
+  debug: {
+    logLevel: 'warn',
+    autoValidate: true,
+    validateOptions: {
+      severity: 'warn',
+      types: ['unreachable-state', 'dead-end-state', 'circular-transition']
+    }
+  }
+});
+```
+
+When `autoValidate` is enabled, the Warning System will:
+- Perform an initial validation when the state machine is created
+- Validate when new states are added
+- Validate after transitions occur
+
+### Manual Validation
+
+You can also manually trigger validation:
+
+```typescript
+// Validate and get all warnings
+const warnings = fluentState.debug.validateStateMachine();
+
+// Validate with custom options
+const criticalWarnings = fluentState.debug.validateStateMachine({
+  severity: 'error',
+  types: ['unreachable-state', 'circular-transition']
+});
+```
+
+### Warning Types
+
+The Warning System can detect various types of issues:
+
+1. **Unreachable States**: States that cannot be reached from the initial state
+   ```typescript
+   // This state cannot be reached from any other state
+   fluentState.from('orphaned-state');
+   ```
+
+2. **Dead-End States**: States with no outgoing transitions
+   ```typescript
+   // This state has no way to exit
+   fluentState.from('dead-end');
+   ```
+
+3. **Circular Transitions**: Groups of states that form a closed loop with no exit
+   ```typescript
+   // This creates a circular transition with no exit
+   fluentState.from('state1').to('state2');
+   fluentState.from('state2').to('state3');
+   fluentState.from('state3').to('state1');
+   ```
+
+4. **Redundant Transitions**: Multiple identical transitions between the same states
+   ```typescript
+   // This creates redundant transitions
+   fluentState.from('idle').to('loading');
+   fluentState.from('idle').to('loading'); // Redundant
+   ```
+
+5. **Conflicting Transitions**: The same transition defined in multiple groups
+   ```typescript
+   const group1 = fluentState.createGroup('group1');
+   group1.from('idle').to('loading');
+   
+   const group2 = fluentState.createGroup('group2');
+   group2.from('idle').to('loading'); // Conflicting
+   ```
+
+6. **Unused Groups**: Transition groups with no transitions defined
+   ```typescript
+   // This creates an unused group
+   const unusedGroup = fluentState.createGroup('unused');
+   ```
+
+7. **Overlapping Conditions**: Multiple auto-transitions with potentially overlapping conditions
+   ```typescript
+   // These conditions might overlap
+   fluentState.from('reviewing')
+     .to<Document>('approved', {
+       condition: (_, doc) => doc.score > 70
+     })
+     .to<Document>('rejected', {
+       condition: (_, doc) => doc.score < 80 // Overlaps with the condition above
+     });
+   ```
+
+### Filtering Warnings
+
+You can filter warnings by severity and type:
+
+```typescript
+// Get only warnings with 'error' severity
+const errorWarnings = fluentState.debug.validateStateMachine({
+  severity: 'error'
+});
+
+// Get only specific types of warnings
+const specificWarnings = fluentState.debug.validateStateMachine({
+  types: ['unreachable-state', 'dead-end-state']
+});
+```
+
+### Warning Structure
+
+Each warning includes detailed information about the issue:
+
+```typescript
+{
+  type: 'unreachable-state',
+  description: 'State "orphaned" is unreachable from the initial state "idle"',
+  severity: 'warn',
+  states: ['orphaned'],
+  transitions: [] // Only included for certain warning types
+}
+```
+
 ## Best Practices
 
 1. **Create snapshots at key points**: Take snapshots before and after significant operations to help with debugging.
