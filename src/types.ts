@@ -36,47 +36,63 @@ export type LogLevel = "none" | "error" | "warn" | "info" | "debug";
  * Configuration for debugging and development tools
  */
 export interface DebugConfig {
-  /** Log level for transition information */
+  /** Log level for the debug manager */
   logLevel?: LogLevel;
-  /** Whether to track performance metrics */
+
+  /** Whether to measure and collect performance metrics */
   measurePerformance?: boolean;
-  /** Whether to save transition history */
+
+  /** Custom log formatting function */
+  logFormat?: (entry: LogEntry) => string;
+
+  /** Custom log handlers to receive log entries */
+  logHandlers?: ((entry: LogEntry) => void)[];
+
+  /** Whether to keep transition history */
   keepHistory?: boolean;
-  /** Maximum number of history entries to keep */
+
+  /** Maximum number of transition history entries to keep */
   historySize?: number;
-  /** Function to export state machine configuration */
+
+  /** Whether to include context data in transition history */
+  includeContextInHistory?: boolean;
+
+  /** Filter function to remove sensitive data from context before storing in history */
+  contextFilter?: (context: unknown) => unknown;
+
+  /** Function to export the state machine configuration */
   exportConfig?: () => string;
-  /** Configuration for state machine visualization */
+
+  /** Configuration for graph visualization */
   generateGraph?: {
     /** Output format for the graph */
     format: "mermaid" | "dot" | "svg";
-    /** Options for graph generation */
+
+    /** Visualization options */
     options?: {
-      /** Whether to include transition conditions in the graph */
+      /** Show transition conditions in the graph */
       showConditions?: boolean;
-      /** Whether to show transition groups as clusters */
+
+      /** Show transition groups as clusters */
       groupClusters?: boolean;
-      /** Whether to include state metadata in the graph */
+
+      /** Show state metadata */
       showMetadata?: boolean;
-      /** Whether to highlight the current state in the graph */
+
+      /** Highlight the current state */
       highlightCurrent?: boolean;
-      /** Whether to show transition history in the graph */
+
+      /** Show transition history in the graph */
       showHistory?: boolean;
+
       /** Custom styling for graph elements */
       styles?: {
-        /** Styles for groups */
         groups?: Record<string, string>;
-        /** Styles for states */
         states?: Record<string, string>;
-        /** Styles for transitions */
         transitions?: Record<string, string>;
       };
     };
   };
-  /** Custom log formatter function */
-  logFormat?: (entry: LogEntry) => string;
-  /** Custom log handlers */
-  logHandlers?: ((entry: LogEntry) => void)[];
 }
 
 /**
@@ -187,39 +203,6 @@ export interface AutoTransitionConfig<TContext = unknown> {
  * @template TContext - The type of context object used in the condition function.
  */
 export type AutoTransition<TContext = unknown> = (state: State, context: TContext) => boolean | Promise<boolean>;
-
-/**
- * Represents a single transition entry in the history.
- */
-export interface TransitionHistoryEntry {
-  /** The source state name */
-  from: string;
-  /** The target state name */
-  to: string;
-  /** Timestamp when the transition occurred */
-  timestamp: number;
-  /** Context data at the time of transition */
-  context: unknown;
-  /** Whether the transition was successful */
-  success: boolean;
-  /** The name of the group this transition belongs to (if any) */
-  groupName?: string;
-}
-
-/**
- * Configuration options for the transition history.
- */
-export interface TransitionHistoryOptions {
-  /** Maximum number of entries to keep in history (default: 100) */
-  maxSize?: number;
-  /** Whether to include context data in history entries (default: true) */
-  includeContext?: boolean;
-  /**
-   * Optional function to filter sensitive data from context during serialization.
-   * This function should return a sanitized version of the context.
-   */
-  contextFilter?: (context: unknown) => unknown;
-}
 
 /**
  * Options for serializing transition history to JSON.
@@ -408,4 +391,36 @@ export interface TransitionGroupMetrics {
   collectionStartTime: number;
   /** Timestamp of the last update to these metrics */
   lastUpdated: number;
+}
+
+/**
+ * Options for configuring the transition history
+ */
+export interface TransitionHistoryOptions {
+  /** Maximum number of entries to keep in history */
+  maxSize?: number;
+  /** Whether to include context data in transition records */
+  includeContext?: boolean;
+  /** Function to filter sensitive data from context before storing */
+  contextFilter?: (context: unknown) => unknown;
+}
+
+/**
+ * A single transition history entry
+ */
+export interface TransitionHistoryEntry {
+  /** The source state of the transition */
+  from: string | null;
+  /** The target state of the transition */
+  to: string;
+  /** Timestamp when the transition occurred */
+  timestamp: number;
+  /** Context data at the time of transition (if includeContext is true) */
+  context?: unknown;
+  /** Whether the transition was successful */
+  success: boolean;
+  /** Optional group name the transition belongs to */
+  group?: string;
+  /** Optional metadata for the transition */
+  metadata?: Record<string, unknown>;
 }

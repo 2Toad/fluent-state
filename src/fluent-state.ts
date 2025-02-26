@@ -70,7 +70,11 @@ export class FluentState {
     }
 
     if (this.historyEnabled) {
-      this.history = new TransitionHistory(options.historyOptions);
+      this.history = new TransitionHistory({
+        maxSize: options.historyOptions?.maxSize ?? 100,
+        includeContext: options.historyOptions?.includeContext ?? true,
+        contextFilter: options.historyOptions?.contextFilter,
+      });
     }
 
     if (options.initialState) {
@@ -103,7 +107,22 @@ export class FluentState {
     if (config.keepHistory && !this.historyEnabled) {
       this.enableHistory({
         maxSize: config.historySize,
+        includeContext: config.includeContextInHistory,
+        contextFilter: config.contextFilter,
       });
+    } else if (config.keepHistory && this.historyEnabled && this.history) {
+      // Update existing history configuration
+      if (config.historySize !== undefined) {
+        this.history.setMaxSize(config.historySize);
+      }
+
+      if (config.includeContextInHistory !== undefined) {
+        this.history.includeContextData(config.includeContextInHistory);
+      }
+
+      if (config.contextFilter !== undefined) {
+        this.history.setContextFilter(config.contextFilter);
+      }
     }
 
     return this;

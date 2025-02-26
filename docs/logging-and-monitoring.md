@@ -10,6 +10,7 @@ FluentState provides comprehensive logging and performance monitoring capabiliti
 - **Configurable** - Granular control over what gets logged
 - **Extensible** - Support for custom loggers and formatters
 - **Informative** - Detailed context about state machine operations
+- **Integrated** - Works seamlessly with transition history tracking
 
 ## Default Behavior
 
@@ -113,6 +114,131 @@ const transitionMetrics = machine.debug.getMetrics("transitionEvaluation");
 const avgTime = machine.debug.getAverageMetric("transitionEvaluation", "idle->loading");
 ```
 
+## Integration with Transition History
+
+The logging and monitoring system integrates with the transition history feature to provide comprehensive debugging capabilities. When both features are enabled, you get the benefits of real-time logging and historical analysis.
+
+```typescript
+// Enable both logging and history tracking
+const machine = new FluentState({
+  initialState: "idle",
+  enableHistory: true,
+  debug: {
+    logLevel: "info",
+    measurePerformance: true
+  }
+});
+
+// Perform transitions
+await machine.transition("loading");
+await machine.transition("processing");
+await machine.transition("complete");
+
+// Access logs and history together
+const history = machine.history.getHistory();
+console.log(`Performed ${history.length} transitions`);
+
+// Analyze transitions with context from logs
+history.forEach(entry => {
+  console.log(`${entry.timestamp}: ${entry.from} -> ${entry.to} (${entry.success ? 'success' : 'failed'})`);
+});
+```
+
+If you haven't enabled history in the FluentState constructor, the DebugManager can maintain its own history:
+
+```typescript
+// Enable history tracking through the debug manager
+machine.debug.enableHistoryTracking(true);
+
+// Configure history options
+machine.debug.configureHistory({
+  maxSize: 100,
+  includeContext: true
+});
+```
+
+### Advanced History Querying
+
+The DebugManager provides advanced querying capabilities for transition history:
+
+```typescript
+// Query transitions by state
+const loadingTransitions = machine.debug.queryTransitions({
+  state: "loading"
+});
+
+// Query transitions by success status
+const failedTransitions = machine.debug.queryTransitions({
+  successful: false
+});
+
+// Query transitions by context data
+const userTransitions = machine.debug.queryTransitions({
+  contextFilter: ctx => ctx !== undefined && (ctx as any)?.userId === "user123"
+});
+
+// Query transitions by time range
+const recentTransitions = machine.debug.queryTransitions({
+  fromTimestamp: Date.now() - 60000, // Last minute
+  toTimestamp: Date.now()
+});
+```
+
+### History Statistics
+
+The DebugManager can generate statistics about your transition history:
+
+```typescript
+const stats = machine.debug.getHistoryStats();
+
+console.log(`Total transitions: ${stats.totalTransitions}`);
+console.log(`Successful transitions: ${stats.successfulTransitions}`);
+console.log(`Failed transitions: ${stats.failedTransitions}`);
+
+// Most frequent states
+console.log("Most frequent states:");
+stats.mostFrequentStates.forEach(([state, count]) => {
+  console.log(`${state}: ${count} occurrences`);
+});
+
+// Most frequent transitions
+console.log("Most frequent transitions:");
+stats.mostFrequentTransitions.forEach(([transition, count]) => {
+  console.log(`${transition.from} -> ${transition.to}: ${count} occurrences`);
+});
+
+// Transitions per minute
+console.log(`Average transitions per minute: ${stats.avgTransitionsPerMinute}`);
+```
+
+### Exporting and Importing History
+
+You can export and import history data for persistence or analysis:
+
+```typescript
+// Export history to JSON
+const historyJson = machine.debug.exportHistory();
+localStorage.setItem('debugHistory', historyJson);
+
+// Export with custom options
+const filteredJson = machine.debug.exportHistory({
+  includeContext: false,
+  filter: entry => entry.success === true
+});
+
+// Import history
+const savedHistory = localStorage.getItem('debugHistory');
+if (savedHistory) {
+  machine.debug.importHistory(savedHistory);
+}
+
+// Import and append to existing history
+machine.debug.importHistory(newHistoryJson, { append: true });
+
+// Clear history
+machine.debug.clearHistory();
+```
+
 ## Custom Loggers
 
 You can add custom loggers to process log entries in any way you need:
@@ -173,21 +299,48 @@ const machine = new FluentState({
 machine.transition("loading");
 ```
 
-### Detailed Debugging
+### Detailed Debugging with History
 
 ```typescript
-// Enable detailed debugging
-machine.debug.setLogLevel("debug");
+// Enable detailed debugging with history tracking
+const machine = new FluentState({
+  initialState: "idle",
+  enableHistory: true,
+  debug: {
+    logLevel: "debug"
+  }
+});
 
 // Add a custom logger to save logs
-const logs: LogEntry[] = [];
+const logs = [];
 machine.debug.addLogger((entry) => logs.push(entry));
 
-// This will generate multiple debug log entries
-machine.transition("loading", { userId: "123" });
+// Define states and transitions
+machine.from("idle").to("loading");
+machine.from("loading").to("success");
+machine.from("loading").to("error");
 
-// Now you can analyze the logs
-const contextLogs = logs.filter(log => log.context && JSON.stringify(log.context).includes("userId"));
+// Start the state machine
+await machine.start();
+
+// Perform transitions with context
+await machine.transition("loading", { userId: "123", operation: "fetch" });
+await machine.transition("error", { userId: "123", error: "Network failure" });
+
+// Analyze logs and history together
+const errorLogs = logs.filter(log => log.level === "error");
+const errorTransitions = machine.debug.queryTransitions({ 
+  successful: true,
+  state: "error",
+  asTarget: true
+});
+
+console.log("Error logs:", errorLogs);
+console.log("Transitions to error state:", errorTransitions);
+
+// Export history for further analysis
+const historyJson = machine.debug.exportHistory();
+localStorage.setItem('debugSession', historyJson);
 ```
 
 ### Performance Monitoring
@@ -235,6 +388,13 @@ console.log("Average transition time:",
    - Consider using more selective logging in performance-critical applications
    - Use `measurePerformance` judiciously in production
 
+9. **Combine logging and history tracking** - Use both features together for comprehensive debugging:
+   - Logging provides real-time visibility into state machine operations
+   - History tracking enables post-mortem analysis and pattern recognition
+   - Export both logs and history for thorough debugging sessions
+
+10. **Use context filtering for sensitive data** - Configure context filters to remove sensitive information before storing or exporting history.
+
 ## Conclusion
 
-The logging and monitoring features in FluentState provide powerful debugging capabilities while maintaining flexibility and performance. By default, these features have no impact on performance as they're disabled, but when enabled, they offer deep insight into the state machine's behavior and performance characteristics. 
+The logging, monitoring, and history tracking features in FluentState provide powerful debugging capabilities while maintaining flexibility and performance. By default, these features have no impact on performance as they're disabled, but when enabled, they offer deep insight into the state machine's behavior and performance characteristics. 

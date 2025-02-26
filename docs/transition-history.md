@@ -76,7 +76,7 @@ const runningTransitions = fs.history.getTransitionsForState("running");
 console.log(`Running state was involved in ${runningTransitions.length} transitions`);
 
 // Get all transition history entries
-const allTransitions = fs.history.getAll();
+const allTransitions = fs.history.getHistory();
 ```
 
 ## API Reference
@@ -89,10 +89,10 @@ const allTransitions = fs.history.getAll();
 |--------|-------------|
 | `getLastTransition()` | Returns the most recent transition entry, or `null` if history is empty. |
 | `getTransitionsForState(stateName: string)` | Returns an array of transition entries involving the specified state (either as source or target). |
-| `getAll()` | Returns an array of all transition history entries. |
+| `getHistory()` | Returns an array of all transition history entries. |
 | `clear()` | Clears all transition history. |
-| `toJSON(options?: SerializationOptions)` | Converts the transition history to a JSON string. Accepts optional serialization options to override the default configuration. |
-| `static fromJSON(json: string, options?: TransitionHistoryOptions)` | Creates a new TransitionHistory instance from a JSON string. |
+| `exportToJSON(options?: SerializationOptions)` | Converts the transition history to a JSON string. Accepts optional serialization options to override the default configuration. |
+| `importFromJSON(json: string, options?: TransitionHistoryOptions)` | Imports transition history from a JSON string. |
 
 ### `SerializationOptions` Interface
 
@@ -128,7 +128,7 @@ await fs.transition("paused");
 await fs.transition("stopped");
 
 // Get the transition history
-const history = fs.history.getAll();
+const history = fs.history.getHistory();
 console.log(`Performed ${history.length} transitions`);
 
 // Analyze transitions
@@ -159,7 +159,7 @@ await fs.transition("running");
 await fs.transition("paused"); // This will fail as "paused" is not a valid transition from "running"
 
 // Get failed transitions
-const allTransitions = fs.history.getAll();
+const allTransitions = fs.history.getHistory();
 const failedTransitions = allTransitions.filter(entry => !entry.success);
 
 console.log("Failed transitions:");
@@ -194,7 +194,7 @@ await fs.transition("completed");
 
 // Implement time travel by replaying transitions up to a certain point
 function timeTravel(targetIndex: number) {
-  const history = fs.history.getAll();
+  const history = fs.history.getHistory();
   
   // Reset to initial state
   fs.setState(history[history.length - 1].from);
@@ -236,7 +236,7 @@ await fs.start();
 
 // Gather analytics
 function generateStateAnalytics() {
-  const history = fs.history.getAll();
+  const history = fs.history.getHistory();
   const stateVisits = new Map<string, number>();
   const stateTransitions = new Map<string, Map<string, number>>();
   
@@ -248,118 +248,80 @@ function generateStateAnalytics() {
       stateVisits.set(entry.to, visits + 1);
       
       // Count transitions from->to
-      const transitionKey = `${entry.from}->${entry.to}`;
-      const transitions = stateTransitions.get(transitionKey) || new Map();
+      if (!stateTransitions.has(entry.from)) {
+        stateTransitions.set(entry.from, new Map());
+      }
+      const transitions = stateTransitions.get(entry.from)!;
       const count = transitions.get(entry.to) || 0;
       transitions.set(entry.to, count + 1);
-      stateTransitions.set(transitionKey, transitions);
     }
   });
   
-  // Generate report
-  console.log("State Machine Analytics:");
-  console.log("----------------------");
-  console.log("State Visits:");
-  stateVisits.forEach((count, state) => {
-    console.log(`${state}: ${count} visits`);
-  });
-  
-  console.log("\nTransition Frequencies:");
-  stateTransitions.forEach((transitions, fromState) => {
-    transitions.forEach((count, toState) => {
-      console.log(`${fromState} -> ${toState}: ${count} times`);
-    });
-  });
+  return { stateVisits, stateTransitions };
 }
 
-generateStateAnalytics();
+const analytics = generateStateAnalytics();
+console.log("State visits:", Object.fromEntries(analytics.stateVisits));
+console.log("Transitions:", Object.fromEntries(
+  Array.from(analytics.stateTransitions.entries()).map(([from, tos]) => 
+    [from, Object.fromEntries(tos)]
+  )
+));
 ```
 
-### Serialization and Context Filtering
+### Serialization and Persistence
 
 ```typescript
-import { FluentState } from "@2toad/fluent-state";
+import { FluentState, TransitionHistory } from "@2toad/fluent-state";
 
-// Create a state machine with history enabled and context filtering
 const fs = new FluentState({
   initialState: "idle",
   enableHistory: true,
   historyOptions: {
     includeContext: true,
-    contextFilter: (context: any) => {
-      if (!context) return context;
-      // Create a filtered copy without sensitive data
-      const filtered = { ...context };
-      if (filtered.user) {
-        // Remove sensitive user data but keep id
-        filtered.user = { id: filtered.user.id };
+    contextFilter: (ctx) => {
+      // Remove sensitive data
+      if (ctx && typeof ctx === 'object') {
+        const filtered = { ...ctx };
+        delete filtered.password;
+        delete filtered.token;
+        return filtered;
       }
-      return filtered;
+      return ctx;
     }
   }
 });
 
-// Define states and transitions
-fs.from("idle").to("running");
-fs.from("running").to("completed");
+// After running the application for a while...
 
-// Start the state machine
-await fs.start();
+// Export history to JSON for persistence
+const historyJson = fs.history.exportToJSON();
+localStorage.setItem('stateHistory', historyJson);
 
-// Update context with sensitive data
-fs.state.updateContext({
-  status: "ready",
-  user: { 
-    id: 123, 
-    name: "Test User", 
-    email: "test@example.com", 
-    password: "secret" 
-  }
-});
-
-// Perform transitions
-await fs.transition("running");
-await fs.transition("completed");
-
-// Serialize the history with default options (using the configured contextFilter)
-const json = fs.history.toJSON();
-console.log(JSON.parse(json));
-// Output will include filtered context: { status: "ready", user: { id: 123 } }
-
-// Serialize with custom options to override the default filter
-const customJson = fs.history.toJSON({
-  contextFilter: (context: any) => {
-    if (!context) return context;
-    return { status: context.status }; // Only include status
-  }
-});
-console.log(JSON.parse(customJson));
-// Output will include only status: { status: "ready" }
-
-// Serialize without any context
-const noContextJson = fs.history.toJSON({ includeContext: false });
-console.log(JSON.parse(noContextJson));
-// Output will not include any context data
-
-// Import serialized history into a new instance
-const importedHistory = TransitionHistory.fromJSON(json);
-console.log(importedHistory.getAll());
+// Later, import the history
+const savedHistory = localStorage.getItem('stateHistory');
+if (savedHistory) {
+  const history = new TransitionHistory();
+  history.importFromJSON(savedHistory);
+  
+  // Analyze the imported history
+  console.log(`Loaded ${history.getHistory().length} historical transitions`);
+}
 ```
 
-### Handling Invalid JSON
+### Error Handling with Invalid JSON
 
 ```typescript
 import { TransitionHistory } from "@2toad/fluent-state";
 
-// Try to import invalid JSON
+const history = new TransitionHistory();
+
 try {
-  const importedHistory = TransitionHistory.fromJSON("invalid json");
-  
-  // This will be an empty history instance
-  console.log(`Imported history has ${importedHistory.getAll().length} entries`);
+  // Attempt to import invalid JSON
+  history.importFromJSON("this is not valid JSON");
 } catch (error) {
-  // The fromJSON method handles errors internally, so this catch block won't execute
-  console.error("This won't be reached:", error);
+  console.error("Failed to import history:", error.message);
+  // Handle the error appropriately
 }
 ```
 

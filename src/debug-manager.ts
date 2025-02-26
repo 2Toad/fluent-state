@@ -1,6 +1,7 @@
 import { FluentState } from "./fluent-state";
 import { State } from "./state";
-import { LogLevel, LogEntry, LogConfig, PerformanceMetric } from "./types";
+import { LogLevel, LogEntry, LogConfig, PerformanceMetric, TransitionHistoryEntry } from "./types";
+import { TransitionHistory } from "./transition-history";
 
 /**
  * Manages debugging capabilities for FluentState including logging, metrics, and visualization.
@@ -12,6 +13,8 @@ export class DebugManager {
   private customLoggers: ((entry: LogEntry) => void)[] = [];
   private metricCollectors: ((metric: PerformanceMetric) => void)[] = [];
   private logFormat: (entry: LogEntry) => string = this.defaultLogFormat;
+  private localHistory?: TransitionHistory;
+  private historyEnabled: boolean = false;
 
   // Store performance metrics
   private metrics: {
@@ -48,6 +51,257 @@ export class DebugManager {
     }
 
     return this;
+  }
+
+  /**
+   * Enable or disable transition history tracking
+   *
+   * @param enable - Whether to enable history tracking
+   * @param options - Optional configuration for the history tracker
+   * @returns The DebugManager instance for chaining
+   */
+  enableHistoryTracking(
+    enable: boolean = true,
+    options?: {
+      maxSize?: number;
+      includeContext?: boolean;
+      contextFilter?: (context: unknown) => unknown;
+    },
+  ): DebugManager {
+    this.historyEnabled = enable;
+
+    if (enable && !this.localHistory) {
+      this.localHistory = new TransitionHistory(options);
+      this.debug("Enabled local history tracking in DebugManager");
+    }
+
+    return this;
+  }
+
+  /**
+   * Configure history tracking options
+   *
+   * @param options - Configuration options for history tracking
+   * @returns The DebugManager instance for chaining
+   */
+  configureHistory(options: { maxSize?: number; includeContext?: boolean; contextFilter?: (context: unknown) => unknown }): DebugManager {
+    if (!this.historyEnabled) {
+      this.enableHistoryTracking(true, options);
+      return this;
+    }
+
+    if (!this.localHistory) {
+      this.localHistory = new TransitionHistory(options);
+      return this;
+    }
+
+    if (options.maxSize !== undefined) {
+      this.localHistory.setMaxSize(options.maxSize);
+    }
+
+    if (options.includeContext !== undefined) {
+      this.localHistory.includeContextData(options.includeContext);
+    }
+
+    if (options.contextFilter) {
+      this.localHistory.setContextFilter(options.contextFilter);
+    }
+
+    return this;
+  }
+
+  /**
+   * Get access to the transition history
+   *
+   * @returns The TransitionHistory instance or undefined if history is disabled
+   */
+  getHistory(): TransitionHistory | undefined {
+    // Try to use the FluentState's history if available,
+    // otherwise fall back to the local history
+    return this.fluentState.history || this.localHistory;
+  }
+
+  /**
+   * Query transitions matching specific criteria
+   *
+   * @param options - Query options
+   * @returns Array of matching transition history entries or empty array if history is disabled
+   */
+  queryTransitions(
+    options: {
+      state?: string;
+      asSource?: boolean;
+      asTarget?: boolean;
+      group?: string;
+      fromTimestamp?: number;
+      toTimestamp?: number;
+      successful?: boolean;
+      metadataFilter?: (metadata: Record<string, unknown>) => boolean;
+      contextFilter?: (context: unknown) => boolean;
+      limit?: number;
+    } = {},
+  ): TransitionHistoryEntry[] {
+    const history = this.getHistory();
+    if (!history) return [];
+
+    let results = history.getHistory();
+
+    // Filter by state
+    if (options.state) {
+      results = history.getTransitionsForState(options.state, {
+        asSource: options.asSource ?? true,
+        asTarget: options.asTarget ?? true,
+      });
+    }
+
+    // Filter by group
+    if (options.group) {
+      results = results.filter((entry) => entry.group === options.group);
+    }
+
+    // Filter by timestamp range
+    if (options.fromTimestamp || options.toTimestamp) {
+      results = results.filter(
+        (entry) =>
+          (options.fromTimestamp === undefined || entry.timestamp >= options.fromTimestamp) &&
+          (options.toTimestamp === undefined || entry.timestamp <= options.toTimestamp),
+      );
+    }
+
+    // Filter by success
+    if (options.successful !== undefined) {
+      results = results.filter((entry) => entry.success === options.successful);
+    }
+
+    // Filter by metadata
+    if (options.metadataFilter) {
+      results = results.filter((entry) => entry.metadata !== undefined && options.metadataFilter!(entry.metadata));
+    }
+
+    // Filter by context
+    if (options.contextFilter) {
+      results = results.filter((entry) => entry.context !== undefined && options.contextFilter!(entry.context));
+    }
+
+    // Apply limit if specified
+    if (options.limit !== undefined && options.limit > 0) {
+      results = results.slice(0, options.limit);
+    }
+
+    return results;
+  }
+
+  /**
+   * Export transition history to JSON
+   *
+   * @param options - Export options
+   * @returns JSON string representation of history or empty string if history is disabled
+   */
+  exportHistory(options?: {
+    indent?: number;
+    includeContext?: boolean;
+    includeMetadata?: boolean;
+    filter?: (entry: TransitionHistoryEntry) => boolean;
+  }): string {
+    const history = this.getHistory();
+    if (!history) return "";
+
+    return history.exportToJSON(options);
+  }
+
+  /**
+   * Import transition history from JSON
+   *
+   * @param json - JSON string representation of history
+   * @param options - Import options
+   * @returns The DebugManager instance for chaining
+   */
+  importHistory(
+    json: string,
+    options?: {
+      append?: boolean;
+      validateEntries?: boolean;
+    },
+  ): DebugManager {
+    const history = this.getHistory();
+
+    if (!history) {
+      // Create local history if none exists
+      this.enableHistoryTracking(true);
+      this.localHistory!.importFromJSON(json, options);
+      return this;
+    }
+
+    history.importFromJSON(json, options);
+    return this;
+  }
+
+  /**
+   * Clear the transition history
+   *
+   * @returns The DebugManager instance for chaining
+   */
+  clearHistory(): DebugManager {
+    const history = this.getHistory();
+    if (history) {
+      history.clear();
+      this.debug("Cleared transition history");
+    }
+    return this;
+  }
+
+  /**
+   * Get statistics about the transition history
+   *
+   * @returns Statistics object or undefined if history is disabled
+   */
+  getHistoryStats():
+    | {
+        totalTransitions: number;
+        successfulTransitions: number;
+        failedTransitions: number;
+        mostFrequentStates: [string, number][];
+        mostFrequentTransitions: [{ from: string | null; to: string }, number][];
+        avgTransitionsPerMinute?: number;
+        oldestTransition?: number;
+        newestTransition?: number;
+      }
+    | undefined {
+    const history = this.getHistory();
+    if (!history || history.isEmpty()) return undefined;
+
+    const allTransitions = history.getHistory();
+    const successful = history.filter((entry) => entry.success);
+    const failed = history.filter((entry) => !entry.success);
+
+    // Calculate transitions per minute if we have more than one transition
+    let avgTransitionsPerMinute: number | undefined;
+    let oldestTransition: number | undefined;
+    let newestTransition: number | undefined;
+
+    if (allTransitions.length > 1) {
+      // Newest is first in the array, oldest is last
+      newestTransition = allTransitions[0].timestamp;
+      oldestTransition = allTransitions[allTransitions.length - 1].timestamp;
+
+      const durationMinutes = (newestTransition - oldestTransition) / (1000 * 60);
+      if (durationMinutes > 0) {
+        avgTransitionsPerMinute = allTransitions.length / durationMinutes;
+      }
+    } else if (allTransitions.length === 1) {
+      newestTransition = oldestTransition = allTransitions[0].timestamp;
+    }
+
+    return {
+      totalTransitions: allTransitions.length,
+      successfulTransitions: successful.length,
+      failedTransitions: failed.length,
+      mostFrequentStates: history.getMostFrequentStates(),
+      mostFrequentTransitions: history.getMostFrequentTransitions(),
+      avgTransitionsPerMinute,
+      oldestTransition,
+      newestTransition,
+    };
   }
 
   /**
@@ -241,6 +495,12 @@ export class DebugManager {
     const message = success ? `Transition: ${fromStateName} → ${toState}` : `Failed transition: ${fromStateName} → ${toState}`;
 
     this.log(level, message, context);
+
+    // Record in local history if enabled and FluentState doesn't have its own history
+    if (this.historyEnabled && this.localHistory && !this.fluentState.history) {
+      this.localHistory.recordTransition(fromState, toState, context, success);
+    }
+
     return this;
   }
 
