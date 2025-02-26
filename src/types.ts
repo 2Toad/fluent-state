@@ -60,8 +60,14 @@ export interface DebugConfig {
   /** Filter function to remove sensitive data from context before storing in history */
   contextFilter?: (context: unknown) => unknown;
 
-  /** Function to export the state machine configuration */
-  exportConfig?: () => string;
+  /**
+   * Configuration for exporting the state machine
+   * Can be:
+   * - A string specifying the format ('json', 'yaml', or 'js')
+   * - true to enable with default settings
+   * - A function to completely customize the export process
+   */
+  exportConfig?: "json" | "yaml" | "js" | boolean | (() => string);
 
   /** Configuration for graph visualization */
   generateGraph?: {

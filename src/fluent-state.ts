@@ -125,7 +125,87 @@ export class FluentState {
       }
     }
 
+    // Set up config export functionality if provided
+    if (config.exportConfig) {
+      this._configExportFormat = typeof config.exportConfig === "string" ? config.exportConfig : "json";
+    }
+
     return this;
+  }
+
+  /**
+   * The format to use when exporting configuration
+   * @private
+   */
+  private _configExportFormat: "json" | "yaml" | "js" = "json";
+
+  /**
+   * Exports the complete state machine configuration.
+   * This is the implementation of the exportConfig property in DebugConfig.
+   *
+   * @param options Optional export configuration that overrides the default format
+   * @returns The serialized state machine configuration
+   */
+  exportConfig(options?: {
+    format?: "json" | "yaml" | "js";
+    indent?: number;
+    includeStates?: boolean;
+    includeTransitions?: boolean;
+    includeGroups?: boolean;
+    includeSettings?: boolean;
+    pretty?: boolean;
+    redactSecrets?: boolean | ((key: string, value: unknown) => boolean);
+    omitKeys?: string[];
+    includeHistory?: boolean;
+    historyLimit?: number;
+  }): string {
+    // If format is not specified in options, use the configured format
+    const exportOptions = {
+      ...options,
+      format: options?.format || this._configExportFormat,
+    };
+
+    return this.debug.exportConfig(exportOptions);
+  }
+
+  /**
+   * Exports a minimal configuration that can be used to recreate this state machine.
+   *
+   * @param options Optional export configuration
+   * @returns The serialized recreation configuration
+   */
+  exportRecreationConfig(options?: {
+    format?: "json" | "yaml" | "js";
+    indent?: number;
+    pretty?: boolean;
+    redactSecrets?: boolean | ((key: string, value: unknown) => boolean);
+    omitKeys?: string[];
+    withComments?: boolean;
+  }): string {
+    // If format is not specified in options, use the configured format
+    const exportOptions = {
+      ...options,
+      format: options?.format || this._configExportFormat,
+    };
+
+    return this.debug.exportRecreationConfig(exportOptions);
+  }
+
+  /**
+   * Exports the state machine as fluent JavaScript code that can recreate it.
+   *
+   * @param options Optional export configuration
+   * @returns JavaScript code that can recreate the state machine
+   */
+  exportAsFluentCode(options?: {
+    includeImports?: boolean;
+    variableName?: string;
+    withComments?: boolean;
+    redactSecrets?: boolean | ((key: string, value: unknown) => boolean);
+    omitKeys?: string[];
+    indent?: number;
+  }): string {
+    return this.debug.exportAsFluentCode(options);
   }
 
   /**

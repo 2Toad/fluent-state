@@ -272,6 +272,128 @@ fluentState.debug.importHistory(newHistoryJson, { append: true });
 fluentState.debug.clearHistory();
 ```
 
+## Configuration Export
+
+The Configuration Export feature allows you to serialize your entire state machine configuration, making it easy to save, share, or recreate your state machine in different environments. This is particularly useful for debugging, testing, and backup purposes.
+
+### Exporting Complete Configuration
+
+You can export the complete configuration of your state machine in various formats:
+
+```typescript
+// Export in JSON format (default)
+const jsonConfig = fluentState.exportConfig();
+
+// Export in YAML format for human readability
+const yamlConfig = fluentState.exportConfig({ format: 'yaml' });
+
+// Export as JavaScript code
+const jsConfig = fluentState.exportConfig({ format: 'js' });
+```
+
+The exported configuration includes:
+- All states
+- All transitions
+- All transition groups with their configurations
+- Debug settings
+- History settings (if enabled)
+
+### Customizing the Export
+
+You can customize what gets included in the export:
+
+```typescript
+// Selective export
+const customConfig = fluentState.exportConfig({
+  format: 'json',
+  indent: 2,
+  includeStates: true,
+  includeTransitions: true,
+  includeGroups: true,
+  includeSettings: true,
+  includeHistory: false,
+  pretty: true
+});
+```
+
+### Securing Sensitive Data
+
+The export feature includes built-in security to protect sensitive information:
+
+```typescript
+// Redact sensitive information
+const secureConfig = fluentState.exportConfig({
+  redactSecrets: true,
+  omitKeys: ['password', 'token', 'secret']
+});
+
+// Use custom redaction function
+const customRedacted = fluentState.exportConfig({
+  redactSecrets: (key, value) => {
+    // Redact any key containing 'user' or 'account'
+    return key.includes('user') || key.includes('account');
+  }
+});
+```
+
+### Exporting for Recreation
+
+If you need a minimal configuration that can recreate your state machine, use the `exportRecreationConfig` method:
+
+```typescript
+// Export minimal config needed for recreation
+const recreationConfig = fluentState.exportRecreationConfig();
+
+// Export without comments for valid JSON parsing
+const parsableConfig = fluentState.exportRecreationConfig({
+  withComments: false
+});
+
+// Later, recreate the state machine
+const savedConfig = JSON.parse(parsableConfig);
+const newFluentState = new FluentState(savedConfig);
+```
+
+### Generating FluentState Code
+
+For the most straightforward recreation, you can generate FluentState code:
+
+```typescript
+// Export as FluentState initialization code
+const fluentCode = fluentState.exportAsFluentCode();
+
+// Customize the code generation
+const customFluentCode = fluentState.exportAsFluentCode({
+  includeImports: true,
+  variableName: 'myStateMachine',
+  withComments: true,
+  indent: 2
+});
+
+// The result is executable JavaScript/TypeScript code
+// Example output:
+/*
+import { FluentState } from 'fluent-state';
+
+const myStateMachine = new FluentState({
+  initialState: 'idle'
+});
+
+// Define states and transitions
+myStateMachine.from('idle').to('running');
+myStateMachine.from('running').to('completed');
+myStateMachine.from('running').to('failed');
+
+// Create groups
+const mainGroup = myStateMachine.createGroup('mainGroup')
+  .withConfig({ priority: 10 });
+mainGroup.from('idle').to('running');
+
+// Start the state machine
+myStateMachine.start();
+*/
+```
+
 ## Best Practices
 
 1. **Create snapshots at key points**: Take snapshots before and after significant operations to help with debugging.
@@ -290,9 +412,19 @@ fluentState.debug.clearHistory();
 
 8. **Use context filtering for sensitive data**: Configure context filters to remove sensitive information before storing or exporting history.
 
+9. **Export state machine configurations for backups**: Regularly export your state machine configuration to enable restoration if needed.
+
+10. **Use YAML format for human readability**: When sharing configurations with team members, the YAML format is more readable than JSON.
+
+11. **Always use withComments: false when planning to parse**: If you need to programmatically process exported configurations, ensure the JSON is valid by setting `withComments: false`.
+
+12. **Include redaction for sensitive data**: Always use the redaction capabilities when exporting configurations that contain sensitive information.
+
+13. **Generate FluentState code for documentation**: The `exportAsFluentCode` method generates readable code that serves as great documentation for your state machine structure.
+
 ## Example: Debugging a Complex Flow
 
-Here's an example of how to use snapshots, metrics, and history tracking to debug a complex checkout flow:
+Here's an example of how to use snapshots, metrics, history tracking, and configuration export to debug a complex checkout flow:
 
 ```typescript
 // Create a checkout flow group
@@ -304,6 +436,14 @@ fluentState.debug.enableHistoryTracking(true);
 
 // Take a snapshot before starting the checkout process
 const initialSnapshot = checkoutFlow.createSnapshot('initial-state');
+
+// Export the initial configuration for comparison later
+const initialConfig = fluentState.exportConfig({
+  format: 'yaml',
+  redactSecrets: true,
+  omitKeys: ['password', 'cardNumber']
+});
+localStorage.setItem('checkoutInitialConfig', initialConfig);
 
 // Run the checkout process
 await checkoutFlow.transition('cart');
@@ -333,7 +473,23 @@ if (fluentState.getCurrentState().name === 'error') {
   // Export history for further analysis
   const historyJson = fluentState.debug.exportHistory();
   localStorage.setItem('checkoutErrorHistory', historyJson);
+  
+  // Export the current configuration for comparison
+  const errorConfig = fluentState.exportConfig({
+    format: 'yaml',
+    redactSecrets: true,
+    omitKeys: ['password', 'cardNumber'],
+    includeHistory: true
+  });
+  localStorage.setItem('checkoutErrorConfig', errorConfig);
+  
+  // Generate code for a minimal reproduction
+  const reproductionCode = fluentState.exportAsFluentCode({
+    includeImports: true,
+    withComments: true
+  });
+  console.log('Reproduction code:', reproductionCode);
 }
 ```
 
-By combining snapshots, metrics, and history tracking, you can gain deep insights into your state machine's behavior and quickly identify and fix issues. 
+By combining snapshots, metrics, history tracking, and configuration export, you can gain deep insights into your state machine's behavior and quickly identify and fix issues. The exported configuration and generated code make it easy to share and reproduce the issue with your team. 

@@ -630,4 +630,643 @@ export class DebugManager {
         break;
     }
   }
+
+  /**
+   * Exports the complete state machine configuration for debugging, documentation, or recreation.
+   *
+   * @param options - Export options
+   * @returns String representation of the state machine configuration
+   */
+  exportConfig(
+    options: {
+      format?: "json" | "yaml" | "js";
+      indent?: number;
+      includeStates?: boolean;
+      includeTransitions?: boolean;
+      includeGroups?: boolean;
+      includeSettings?: boolean;
+      pretty?: boolean;
+      redactSecrets?: boolean | ((key: string, value: unknown) => boolean);
+      omitKeys?: string[];
+      includeHistory?: boolean;
+      historyLimit?: number;
+    } = {},
+  ): string {
+    // Default options
+    const {
+      format = "json",
+      indent = 2,
+      includeStates = true,
+      includeTransitions = true,
+      includeGroups = true,
+      includeSettings = true,
+      pretty = true,
+      redactSecrets = false,
+      omitKeys = ["password", "token", "secret", "key", "credential"],
+      includeHistory = false,
+      historyLimit = 10,
+    } = options;
+
+    this.debug("Exporting state machine configuration", options);
+
+    // Gather all state machine data
+    const config: Record<string, unknown> = {};
+
+    // Include current state
+    const currentState = this.fluentState.getCurrentState();
+    if (currentState) {
+      config.currentState = currentState.name;
+    }
+
+    // Include states
+    if (includeStates) {
+      const states: Record<string, unknown> = {};
+      this.fluentState.states.forEach((state, name) => {
+        states[name] = {
+          transitions: state.transitions,
+          autoTransitions: this.serializeAutoTransitions(state),
+          hasContext: !!state.getContext(),
+        };
+      });
+      config.states = states;
+    }
+
+    // Include all transitions
+    if (includeTransitions) {
+      const transitions: Record<string, string[]> = {};
+      this.fluentState.states.forEach((state, name) => {
+        transitions[name] = [...state.transitions];
+      });
+      config.transitions = transitions;
+    }
+
+    // Include groups
+    if (includeGroups) {
+      config.groups = this.fluentState.exportGroups();
+    }
+
+    // Include debug settings
+    if (includeSettings) {
+      config.settings = {
+        logLevel: this.logLevel,
+        measurePerformance: this.measurePerformance,
+        historyEnabled: this.historyEnabled || this.fluentState.history !== undefined,
+      };
+    }
+
+    // Include history summary
+    if (includeHistory) {
+      const history = this.getHistory();
+      if (history) {
+        const historyData = history.getHistory().slice(-historyLimit);
+        config.recentHistory = historyData.map((entry) => this.redactSensitiveData(entry, redactSecrets, omitKeys));
+      }
+    }
+
+    // Process the configuration to redact sensitive information if needed
+    const processedConfig = this.processSensitiveData(config, redactSecrets, omitKeys) as Record<string, unknown>;
+
+    // Format the output
+    switch (format) {
+      case "json":
+        return pretty ? JSON.stringify(processedConfig, null, indent) : JSON.stringify(processedConfig);
+
+      case "yaml":
+        return this.convertToYaml(processedConfig, indent);
+
+      case "js":
+        return `const stateMachineConfig = ${JSON.stringify(processedConfig, null, indent)};
+export default stateMachineConfig;`;
+
+      default:
+        return JSON.stringify(processedConfig, null, indent);
+    }
+  }
+
+  /**
+   * Exports only the state machine configuration part needed to recreate it.
+   *
+   * @param options - Export options
+   * @returns String representation of the recreatable state machine configuration
+   */
+  exportRecreationConfig(
+    options: {
+      format?: "json" | "yaml" | "js";
+      indent?: number;
+      pretty?: boolean;
+      redactSecrets?: boolean | ((key: string, value: unknown) => boolean);
+      omitKeys?: string[];
+      withComments?: boolean;
+    } = {},
+  ): string {
+    const {
+      format = "json",
+      indent = 2,
+      pretty = true,
+      redactSecrets = true,
+      omitKeys = ["password", "token", "secret", "key", "credential"],
+      withComments = true,
+    } = options;
+
+    this.debug("Exporting recreation configuration", options);
+
+    // Create a minimal configuration that can be used to recreate the state machine
+    const recreationConfig: Record<string, unknown> = {
+      initialState: this.fluentState.getCurrentState()?.name,
+      states: {},
+      groups: this.fluentState.exportGroups(),
+      settings: {
+        enableHistory: this.historyEnabled || this.fluentState.history !== undefined,
+        debug: {
+          logLevel: this.logLevel,
+          measurePerformance: this.measurePerformance,
+        },
+      },
+    };
+
+    // Add states with their transitions
+    const statesConfig = recreationConfig.states as Record<string, unknown>;
+    this.fluentState.states.forEach((state, name) => {
+      statesConfig[name] = {
+        transitions: state.transitions,
+      };
+    });
+
+    // Process the configuration to redact sensitive information
+    const processedConfig = this.processSensitiveData(recreationConfig, redactSecrets, omitKeys) as Record<string, unknown>;
+
+    // Format with appropriate comments if requested
+    switch (format) {
+      case "json":
+        if (withComments && pretty) {
+          return this.createJsonWithComments(processedConfig, indent);
+        }
+        return pretty ? JSON.stringify(processedConfig, null, indent) : JSON.stringify(processedConfig);
+
+      case "yaml":
+        if (withComments) {
+          return this.createYamlWithComments(processedConfig);
+        }
+        return this.convertToYaml(processedConfig, indent);
+
+      case "js":
+        if (withComments) {
+          return `/**
+ * FluentState configuration for recreation
+ * Generated on: ${new Date().toISOString()}
+ *
+ * This configuration can be used to recreate an identical state machine.
+ * Usage:
+ *   const fs = new FluentState(stateMachineConfig);
+ *   await fs.start();
+ */
+const stateMachineConfig = ${JSON.stringify(processedConfig, null, indent)};
+export default stateMachineConfig;`;
+        }
+        return `const stateMachineConfig = ${JSON.stringify(processedConfig, null, indent)};
+export default stateMachineConfig;`;
+
+      default:
+        return JSON.stringify(processedConfig, null, indent);
+    }
+  }
+
+  /**
+   * Exports the state machine as a fluent JavaScript code that can recreate it.
+   * Useful for generating code examples or starter templates.
+   *
+   * @param options - Export options
+   * @returns String containing JavaScript code to recreate the state machine
+   */
+  exportAsFluentCode(
+    options: {
+      includeImports?: boolean;
+      variableName?: string;
+      withComments?: boolean;
+      redactSecrets?: boolean | ((key: string, value: unknown) => boolean);
+      omitKeys?: string[];
+      indent?: number;
+    } = {},
+  ): string {
+    const {
+      includeImports = true,
+      variableName = "fluentState",
+      withComments = true,
+      redactSecrets = true,
+      omitKeys = ["password", "token", "secret", "key", "credential"],
+      indent = 2,
+    } = options;
+
+    this.debug("Exporting state machine as fluent code", options);
+
+    let codeOutput = "";
+    const indentStr = " ".repeat(indent);
+
+    // Add imports if requested
+    if (includeImports) {
+      codeOutput += `import { FluentState } from 'fluent-state';\n\n`;
+    }
+
+    // Add comments if requested
+    if (withComments) {
+      codeOutput += `/**
+ * FluentState machine definition
+ * Generated on: ${new Date().toISOString()}
+ */\n`;
+    }
+
+    // Create the FluentState instance
+    const currentState = this.fluentState.getCurrentState();
+    if (currentState) {
+      codeOutput += `const ${variableName} = new FluentState({
+${indentStr}initialState: "${currentState.name}"`;
+
+      // Add debug configuration if needed
+      if (this.logLevel !== "none" || this.measurePerformance) {
+        codeOutput += `,
+${indentStr}debug: {
+${indentStr}${indentStr}logLevel: "${this.logLevel}",
+${indentStr}${indentStr}measurePerformance: ${this.measurePerformance}
+${indentStr}}`;
+      }
+
+      // Add history configuration if enabled
+      if (this.historyEnabled || this.fluentState.history) {
+        codeOutput += `,
+${indentStr}enableHistory: true`;
+      }
+
+      codeOutput += `
+});\n\n`;
+    } else {
+      codeOutput += `const ${variableName} = new FluentState();\n\n`;
+    }
+
+    // Define states and transitions
+    this.fluentState.states.forEach((state, stateName) => {
+      if (stateName === currentState?.name) return; // Skip initial state (already defined)
+
+      codeOutput += `${variableName}.from("${stateName}");\n`;
+    });
+
+    codeOutput += "\n";
+
+    // Define transitions
+    this.fluentState.states.forEach((state, stateName) => {
+      if (state.transitions.length === 0) return;
+
+      // Chain transitions from this state
+      codeOutput += `${variableName}.from("${stateName}")`;
+
+      state.transitions.forEach((transition) => {
+        codeOutput += `\n${indentStr}.to("${transition}")`;
+      });
+
+      codeOutput += ";\n\n";
+    });
+
+    // Define groups if they exist
+    if (this.fluentState.groups.size > 0) {
+      codeOutput += "// Transition Groups\n";
+
+      this.fluentState.groups.forEach((group, groupName) => {
+        const serialized = group.serialize();
+        const processedGroup = this.processSensitiveData(serialized, redactSecrets, omitKeys) as Record<string, unknown>;
+
+        codeOutput += `const ${groupName.replace(/[^a-zA-Z0-9_]/g, "_")}Group = ${variableName}.createGroup("${groupName}")`;
+
+        // Add configuration if available
+        if (processedGroup.config) {
+          const config = processedGroup.config;
+          codeOutput += `\n${indentStr}.withConfig(${JSON.stringify(config)})`;
+        }
+
+        codeOutput += ";\n\n";
+
+        // Add transitions to the group
+        if (Array.isArray(serialized.transitions) && serialized.transitions.length > 0) {
+          serialized.transitions.forEach((t) => {
+            codeOutput += `${groupName.replace(/[^a-zA-Z0-9_]/g, "_")}Group.from("${t.from}").to("${t.to}");\n`;
+          });
+          codeOutput += "\n";
+        }
+      });
+    }
+
+    // Add code to start the state machine
+    codeOutput += `// Start the state machine\n${variableName}.start();\n`;
+
+    return codeOutput;
+  }
+
+  /**
+   * Creates a JSON string with comments explaining each major section.
+   *
+   * @param config - The configuration object
+   * @param indent - Number of spaces for indentation
+   * @returns JSON string with comments
+   */
+  private createJsonWithComments(config: Record<string, unknown>, indent: number): string {
+    // JSON doesn't support comments, so we're creating a string that looks like JSON with comments
+    // This won't be valid JSON, but is meant for human reading
+
+    const jsonStr = JSON.stringify(config, null, indent);
+    const lines = jsonStr.split("\n");
+
+    // Insert comments at key sections
+    let result = "// FluentState configuration - Generated on: " + new Date().toISOString() + "\n";
+    result += "// This configuration can be used to recreate an identical state machine\n\n";
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Add comments before major sections
+      if (line.includes('"initialState"')) {
+        result += "  // The initial state of the state machine\n";
+      } else if (line.includes('"states"')) {
+        result += "  // Definition of all states and their transitions\n";
+      } else if (line.includes('"groups"')) {
+        result += "  // Transition groups for organization and control\n";
+      } else if (line.includes('"settings"')) {
+        result += "  // Configuration settings for the state machine\n";
+      }
+
+      result += line + "\n";
+    }
+
+    return result;
+  }
+
+  /**
+   * Converts the configuration object to YAML format.
+   *
+   * @param config - The configuration object
+   * @param indent - Number of spaces for indentation
+   * @returns YAML string
+   */
+  private convertToYaml(config: Record<string, unknown>, indent: number): string {
+    // A simple JSON to YAML converter for basic objects
+    // For a real implementation, you'd use a YAML library
+
+    const toYaml = (obj: unknown, depth = 0): string => {
+      const indentStr = " ".repeat(indent * depth);
+
+      if (obj === null) return "null";
+      if (obj === undefined) return "";
+
+      if (typeof obj === "string") return `"${obj}"`;
+      if (typeof obj === "number" || typeof obj === "boolean") return String(obj);
+
+      if (Array.isArray(obj)) {
+        if (obj.length === 0) return "[]";
+
+        return obj.map((item) => `${indentStr}- ${toYaml(item, depth + 1).trimStart()}`).join("\n");
+      }
+
+      if (typeof obj === "object") {
+        const objEntries = Object.entries(obj);
+        if (objEntries.length === 0) return "{}";
+
+        return objEntries
+          .map(([key, value]) => {
+            const valueStr = toYaml(value, depth + 1);
+            if (typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length > 0) {
+              return `${indentStr}${key}:\n${valueStr}`;
+            }
+            return `${indentStr}${key}: ${valueStr}`;
+          })
+          .join("\n");
+      }
+
+      return String(obj);
+    };
+
+    return toYaml(config);
+  }
+
+  /**
+   * Creates a YAML string with comments from a configuration object.
+   *
+   * @param config - The configuration object to convert to YAML with comments
+   * @returns YAML string with comments
+   */
+  private createYamlWithComments(config: Record<string, unknown>): string {
+    let result = "# FluentState configuration - Generated on: " + new Date().toISOString() + "\n";
+    result += "# This configuration can be used to recreate an identical state machine\n\n";
+
+    if (config.initialState) {
+      result += "# The initial state of the state machine\n";
+      result += `initialState: "${String(config.initialState)}"\n\n`;
+    }
+
+    if (config.states) {
+      result += "# Definition of all states and their transitions\n";
+      result += "states:\n";
+
+      const states = config.states as Record<string, unknown>;
+      Object.entries(states).forEach(([stateName, stateConfig]) => {
+        result += `  ${stateName}:\n`;
+
+        const stateObj = stateConfig as Record<string, unknown>;
+        if (Array.isArray(stateObj.transitions)) {
+          result += "    transitions:\n";
+          stateObj.transitions.forEach((transition: string) => {
+            result += `      - "${transition}"\n`;
+          });
+        }
+      });
+
+      result += "\n";
+    }
+
+    if (config.groups) {
+      result += "# Transition groups for organization and control\n";
+      result += "groups:\n";
+
+      const groups = config.groups as unknown[];
+      if (Array.isArray(groups)) {
+        groups.forEach((group, index) => {
+          const groupObj = group as Record<string, unknown>;
+          result += `  - name: "${groupObj.name}"\n`;
+
+          if (groupObj.namespace) {
+            result += `    namespace: "${groupObj.namespace}"\n`;
+          }
+
+          result += `    enabled: ${groupObj.enabled}\n`;
+
+          if (groupObj.parentGroup) {
+            result += `    parentGroup: "${groupObj.parentGroup}"\n`;
+          }
+
+          if (groupObj.config) {
+            result += "    config:\n";
+            const configObj = groupObj.config as Record<string, unknown>;
+
+            Object.entries(configObj).forEach(([key, value]) => {
+              if (typeof value === "object" && value !== null) {
+                result += `      ${key}:\n`;
+                const valueObj = value as Record<string, unknown>;
+                Object.entries(valueObj).forEach(([subKey, subValue]) => {
+                  result += `        ${subKey}: ${subValue}\n`;
+                });
+              } else {
+                result += `      ${key}: ${value}\n`;
+              }
+            });
+          }
+
+          if (Array.isArray(groupObj.transitions) && groupObj.transitions.length > 0) {
+            result += "    transitions:\n";
+            groupObj.transitions.forEach((t: unknown) => {
+              const transition = t as Record<string, unknown>;
+              result += `      - from: "${transition.from}"\n`;
+              result += `        to: "${transition.to}"\n`;
+
+              if (transition.config) {
+                result += "        config:\n";
+                const tConfig = transition.config as Record<string, unknown>;
+                Object.entries(tConfig).forEach(([key, value]) => {
+                  result += `          ${key}: ${value}\n`;
+                });
+              }
+            });
+          }
+
+          if (index < groups.length - 1) {
+            result += "\n";
+          }
+        });
+      }
+
+      result += "\n";
+    }
+
+    if (config.settings) {
+      result += "# Configuration settings for the state machine\n";
+      result += "settings:\n";
+
+      const settings = config.settings as Record<string, unknown>;
+      Object.entries(settings).forEach(([key, value]) => {
+        if (typeof value === "object" && value !== null) {
+          result += `  ${key}:\n`;
+          const valueObj = value as Record<string, unknown>;
+          Object.entries(valueObj).forEach(([subKey, subValue]) => {
+            result += `    ${subKey}: ${subValue}\n`;
+          });
+        } else {
+          result += `  ${key}: ${value}\n`;
+        }
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Serializes auto-transitions for a state into a configuration object.
+   *
+   * @param state - The state to serialize auto-transitions for
+   * @returns Array of serialized auto-transitions
+   */
+  private serializeAutoTransitions(state: State): Record<string, unknown>[] {
+    // Get the private state to access auto-transitions
+    const privateState = state as unknown as {
+      _autoTransitions?: Array<{
+        condition: (state: State, context: unknown) => boolean | Promise<boolean>;
+        targetState: string;
+        priority?: number;
+        debounce?: number;
+        retryConfig?: {
+          maxAttempts: number;
+          delay: number;
+        };
+        groupName?: string;
+      }>;
+    };
+
+    if (!privateState._autoTransitions || !Array.isArray(privateState._autoTransitions)) {
+      return [];
+    }
+
+    return privateState._autoTransitions.map((autoTransition) => {
+      // We're explicitly excluding the condition function as it can't be serialized
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { condition: _, ...rest } = autoTransition;
+      return {
+        ...rest,
+        hasCondition: true,
+      };
+    });
+  }
+
+  /**
+   * Process sensitive data in a configuration object by redacting it.
+   *
+   * @param data - The data object to process
+   * @param redactSecrets - Whether to redact secrets or a function to determine what to redact
+   * @param omitKeys - Keys to omit or redact
+   * @returns Processed data with sensitive information redacted
+   */
+  private processSensitiveData(data: unknown, redactSecrets: boolean | ((key: string, value: unknown) => boolean), omitKeys: string[] = []): unknown {
+    if (!redactSecrets) return data;
+
+    const shouldRedact = (key: string, value: unknown): boolean => {
+      if (typeof redactSecrets === "function") {
+        return redactSecrets(key, value);
+      }
+
+      // Default redaction logic - redact keys that match sensitive patterns
+      return omitKeys.some((pattern) => key.toLowerCase().includes(pattern.toLowerCase()));
+    };
+
+    const processValue = (value: unknown, path: string): unknown => {
+      if (value === null || value === undefined) return value;
+
+      if (Array.isArray(value)) {
+        return value.map((item, index) => processValue(item, `${path}[${index}]`));
+      }
+
+      if (typeof value === "object") {
+        return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>).map(([key, val]) => {
+            const newPath = path ? `${path}.${key}` : key;
+
+            if (shouldRedact(key, val)) {
+              return [key, "[REDACTED]"];
+            }
+
+            return [key, processValue(val, newPath)];
+          }),
+        );
+      }
+
+      return value;
+    };
+
+    return processValue(data, "");
+  }
+
+  /**
+   * Redact sensitive data from a history entry.
+   *
+   * @param entry - The history entry to process
+   * @param redactSecrets - Whether to redact secrets or a function to determine what to redact
+   * @param omitKeys - Keys to omit or redact
+   * @returns Processed entry with sensitive information redacted
+   */
+  private redactSensitiveData(
+    entry: TransitionHistoryEntry,
+    redactSecrets: boolean | ((key: string, value: unknown) => boolean),
+    omitKeys: string[] = [],
+  ): TransitionHistoryEntry {
+    if (!redactSecrets || !entry.context) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      context: this.processSensitiveData(entry.context, redactSecrets, omitKeys),
+    };
+  }
 }

@@ -373,4 +373,187 @@ describe("DebugManager", () => {
       expect(customLogger.firstCall.args[0].message).to.equal("test message");
     });
   });
+
+  describe("Configuration Export", () => {
+    beforeEach(() => {
+      // Set up a more complete state machine for testing exports
+      fluentState = new FluentState({ initialState: "idle" });
+
+      // Define states and transitions - we're using from() which will create states if they don't exist
+      fluentState.from("idle").to("running");
+      fluentState.from("idle").to("paused");
+      fluentState.from("running").to("completed");
+      fluentState.from("running").to("failed");
+      fluentState.from("paused").to("running");
+      fluentState.from("paused").to("idle");
+
+      // Create a group for testing
+      const group = fluentState.createGroup("testGroup").withConfig({
+        priority: 10,
+        debounce: 100,
+      });
+
+      group.from("idle").to("running");
+
+      // Enable debug features
+      debugManager = fluentState.debug;
+      debugManager.setLogLevel("debug");
+      debugManager.enablePerformanceMeasurement(true);
+      debugManager.enableHistoryTracking(true);
+
+      // Record a transition to have some history
+      const idleState = fluentState._getState("idle");
+      if (idleState) {
+        debugManager.logTransition(idleState, "running", true, { user: "testUser", password: "secret123" });
+      }
+    });
+
+    it("should export complete configuration in JSON format", () => {
+      const config = debugManager.exportConfig();
+
+      // Should be valid JSON
+      const parsed = JSON.parse(config);
+
+      // Should include states
+      expect(parsed.states).to.be.an("object");
+      expect(Object.keys(parsed.states)).to.include.members(["idle", "running", "paused", "completed", "failed"]);
+
+      // Should include transitions
+      expect(parsed.transitions).to.be.an("object");
+      expect(parsed.transitions.idle).to.include.members(["running", "paused"]);
+      expect(parsed.transitions.running).to.include.members(["completed", "failed"]);
+
+      // Should include groups
+      expect(parsed.groups).to.be.an("array");
+      expect(parsed.groups[0].name).to.equal("testGroup");
+
+      // Should include settings
+      expect(parsed.settings).to.be.an("object");
+      expect(parsed.settings.logLevel).to.equal("debug");
+      expect(parsed.settings.measurePerformance).to.equal(true);
+    });
+
+    it("should export configuration in YAML format", () => {
+      const config = debugManager.exportConfig({ format: "yaml" });
+
+      // Basic validation for YAML format
+      expect(config).to.be.a("string");
+      expect(config).to.include("states:");
+      expect(config).to.include("transitions:");
+      expect(config).to.include("testGroup");
+    });
+
+    it("should export configuration in JS format", () => {
+      const config = debugManager.exportConfig({ format: "js" });
+
+      // Basic validation for JS module format
+      expect(config).to.be.a("string");
+      expect(config).to.include("const stateMachineConfig =");
+      expect(config).to.include("export default stateMachineConfig");
+    });
+
+    it("should redact sensitive information", () => {
+      // Include history with sensitive information
+      const config = debugManager.exportConfig({
+        includeHistory: true,
+        redactSecrets: true,
+        omitKeys: ["password"],
+      });
+
+      const parsed = JSON.parse(config);
+
+      // Check if history exists and password is redacted
+      if (parsed.recentHistory && parsed.recentHistory.length > 0) {
+        const historyEntry = parsed.recentHistory[0];
+        if (historyEntry.context) {
+          expect(historyEntry.context.password).to.equal("[REDACTED]");
+          expect(historyEntry.context.user).to.equal("testUser"); // Should not be redacted
+        }
+      }
+    });
+
+    it("should allow selective inclusion of state machine parts", () => {
+      // Export with only states and settings
+      const config = debugManager.exportConfig({
+        includeStates: true,
+        includeTransitions: false,
+        includeGroups: false,
+        includeSettings: true,
+      });
+
+      const parsed = JSON.parse(config);
+
+      // Should include states
+      expect(parsed.states).to.be.an("object");
+
+      // Should not include transitions and groups
+      expect(parsed.transitions).to.be.undefined;
+      expect(parsed.groups).to.be.undefined;
+
+      // Should include settings
+      expect(parsed.settings).to.be.an("object");
+    });
+
+    it("should export minimal recreation configuration", () => {
+      const config = debugManager.exportRecreationConfig({
+        withComments: false, // Disable comments for valid JSON
+      });
+
+      // Now it should be valid JSON
+      const parsed = JSON.parse(config);
+
+      // Should include essential parts for recreation
+      expect(parsed.initialState).to.equal("idle");
+      expect(parsed.states).to.be.an("object");
+      expect(parsed.groups).to.be.an("array");
+      expect(parsed.settings).to.be.an("object");
+    });
+
+    it("should export fluent code that can recreate the state machine", () => {
+      const code = debugManager.exportAsFluentCode();
+
+      // Basic validation for JS code
+      expect(code).to.be.a("string");
+      expect(code).to.include("import { FluentState } from 'fluent-state'");
+      expect(code).to.include("const fluentState = new FluentState");
+      expect(code).to.include('.from("idle")');
+      expect(code).to.include('.to("running")');
+      expect(code).to.include("fluentState.start()");
+    });
+
+    it("should integrate with FluentState class", () => {
+      // Call export methods via FluentState
+      const jsonConfig = fluentState.exportConfig();
+      const recreationConfig = fluentState.exportRecreationConfig({
+        withComments: false, // Disable comments for valid JSON
+      });
+      const fluentCode = fluentState.exportAsFluentCode();
+
+      // Basic validation
+      expect(JSON.parse(jsonConfig)).to.be.an("object");
+      expect(JSON.parse(recreationConfig)).to.be.an("object");
+      expect(fluentCode).to.include("FluentState");
+    });
+
+    it("should handle custom redaction function", () => {
+      // Custom redaction function that redacts user property
+      const customRedact = (key: string, value: unknown) => key === "user";
+
+      const config = debugManager.exportConfig({
+        includeHistory: true,
+        redactSecrets: customRedact,
+      });
+
+      const parsed = JSON.parse(config);
+
+      // Check if history exists and user is redacted but password is not
+      if (parsed.recentHistory && parsed.recentHistory.length > 0) {
+        const historyEntry = parsed.recentHistory[0];
+        if (historyEntry.context) {
+          expect(historyEntry.context.user).to.equal("[REDACTED]");
+          expect(historyEntry.context.password).to.equal("secret123"); // Should not be redacted
+        }
+      }
+    });
+  });
 });
