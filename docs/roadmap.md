@@ -2,7 +2,7 @@
 
 This document outlines planned improvements and potential features for the FluentState library.
 
-## 1. Enhanced Auto-transition Configuration
+## ✅ 1. Enhanced Auto-transition Configuration
 Dependencies: None
 
 Extend the `AutoTransitionConfig` interface with more control over transition behavior:
@@ -86,7 +86,7 @@ fs.from("connecting")
   });
 ```
 
-## 2. Transition History
+## ✅ 2. Transition History
 Dependencies: None
 
 Add a system for tracking and querying transition history:
@@ -148,7 +148,7 @@ Acceptance Criteria:
 Example Usage:
 ```typescript
 // Enable history tracking
-const machine = new StateMachine({
+const machine = new FluentState({
   initialState: "idle",
   enableHistory: true,
   historyOptions: {
@@ -213,7 +213,7 @@ Benefits:
 - More predictable transition behavior
 - Optimized for different use cases
 
-## 5. Transition Groups
+## ✅ 5. Transition Groups
 Dependencies:
 - Enhanced Auto-transition Configuration (for group-level configuration inheritance)
 
@@ -364,7 +364,7 @@ fluentState.group('authentication').disableTemporarily(5 * 60 * 1000);
 const isAuthFlowEnabled = fluentState.group('authentication').isEnabled();
 ```
 
-## 6. State Manager Performance Optimizations
+## ✅ 6. State Manager Performance Optimizations
 Dependencies: None
 
 Configuration options for optimizing state manager performance:
@@ -456,7 +456,7 @@ Acceptance Criteria:
 Example Usage:
 ```typescript
 // Configure performance optimizations
-const machine = new StateMachine({
+const machine = new FluentState({
   initialState: "idle",
   stateManagerConfig: {
     batchUpdates: true,
@@ -555,43 +555,142 @@ Benefits:
   - Historical transitions
   - Custom styling options
 
+User Story:
+As a developer building and maintaining complex state machines with FluentState,
+I want comprehensive debugging and visualization tools,
+So that I can easily troubleshoot issues, understand state flow, gain performance insights, and communicate state machine architecture to my team.
+
+Acceptance Criteria:
+
+1. Logging and Monitoring
+   - Different log levels ('none', 'error', 'warn', 'info', 'debug') can be configured through the logLevel property
+   - Detailed information about state transitions, conditions, and context changes are logged at appropriate levels
+   - Logs include timestamps, state information, and relevant context data
+   - Performance metrics are collected when measurePerformance is enabled
+   - Performance data includes transition evaluation time, condition execution time, and context update time
+   - Logs can be directed to custom output channels (console, file, custom logger)
+   - Log format is customizable to integrate with existing logging systems
+
+2. History Tracking
+   - Complete transition history is maintained when keepHistory is enabled
+   - History size is configurable through historySize to prevent memory issues
+   - History includes source state, target state, timestamp, context data, and metadata
+   - History can be queried and filtered by state, time range, or metadata
+   - Export functionality for history data in JSON format for external analysis
+   - Clear separation between current state management and history tracking to minimize performance impact
+
+3. Configuration Export
+   - The exportConfig function produces a complete serialized representation of the state machine
+   - Export format includes states, transitions, groups, and configuration settings
+   - Exported configuration can be used to recreate an identical state machine
+   - Configuration export supports redaction of sensitive information
+   - Export function is extensible to support different output formats
+
+4. State Machine Visualization
+   - The generateGraph function creates visual representations of the state machine
+   - Supported output formats include Mermaid, DOT, and SVG
+   - Visualization shows all states, transitions, and their relationships
+   - Transition groups are represented as clusters when groupClusters is enabled
+   - Transition conditions are displayed when showConditions is enabled
+   - Current state is highlighted when highlightCurrent is enabled
+   - Historical transitions can be shown when showHistory is enabled
+   - State metadata is included when showMetadata is enabled
+   - Custom styling can be applied through the styles configuration for groups, states, and transitions
+   - Generated visualizations can be used in documentation, presentations, or development tools
+
+5. Developer Experience
+   - Debugging tools integrate with modern development environments and debugging tools
+   - All debugging features have minimal impact on production performance when disabled
+   - Tools provide actionable insights and suggestions for optimizing state machines
+   - Time-travel debugging support through integration with transition history
+   - Warning system for potential issues such as unreachable states or conflicting transitions
+   - Interactive mode for testing state transitions and simulating context changes
+   - Development tools are accessible through both programmatic and visual interfaces
+
+Example Usage:
+```typescript
+// Configure debugging tools
+
+fluentState.debugConfig(config: DebugConfig);
+// or
+const fs = new FluentState({
+  initialState: "idle",
+  debug: {
+    logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'error',
+    measurePerformance: true,
+    keepHistory: true,
+    historySize: 100,
+    exportConfig: () => JSON.stringify(machine.config, null, 2),
+    generateGraph: {
+      format: 'mermaid',
+      options: {
+        showConditions: true,
+        groupClusters: true,
+        highlightCurrent: true,
+        showHistory: true,
+        styles: {
+          groups: {
+            'authentication': 'fill:#f9f,stroke:#333,stroke-width:2px',
+            'upload': 'fill:#bbf,stroke:#333,stroke-width:2px'
+          }
+        }
+      }
+    }
+  }
+});
+
+// Later, generate visualization for documentation
+const diagram = fs.debug.generateGraph();
+fs.writeFileSync('state-machine.md', diagram);
+
+// Export current configuration
+const config = fs.debug.exportConfig();
+localStorage.setItem('savedStateMachine', config);
+
+// Analyze transition history
+const authFailures = fs.debug.history.filter(entry => 
+  entry.from === 'authenticating' && entry.to === 'error'
+);
+console.log(`Auth failures: ${authFailures.length}`);
+```
+
 ## Implementation Priority
 
 Given the dependencies, here's the revised implementation order:
 
-1. Enhanced Auto-transition Configuration (High)
+1. ✅ Enhanced Auto-transition Configuration (High)
    - Most immediately useful for existing users
    - Builds on current functionality
    - Required by multiple other features
 
-2. State Manager Performance Optimizations (High)
+2. ✅ State Manager Performance Optimizations (High)
    - Important for applications with frequent updates
    - Performance improvements benefit all users
    - Required for batch updates
 
-3. Transition History (Medium)
+3. ✅ Transition History (Medium)
    - Required for comprehensive debugging tools
    - Foundation for monitoring and analytics
 
-4. Transition Groups (Medium)
+4. ✅ Transition Groups (Medium)
    - Moved up in priority as it's required for complete debugging tools
    - Organizational improvement
    - Required for state machine visualization
    - Requires enhanced auto-transition configuration
 
 5. Debugging and Development Tools (Medium)
-   - Critical for adoption and maintenance
-   - Helps users understand and debug their state machines
-   - Builds on transition history and groups
-   - Complete visualization support
+  - Critical for adoption and maintenance
+  - Helps users understand and debug their state machines
+  - Builds on transition history and groups
+  - Complete visualization support
 
 6. Batch Context Updates (Medium)
-   - Performance optimization for specific use cases
-   - Requires auto-transition configuration and state manager optimizations
+  - Performance optimization for specific use cases
+  - Requires auto-transition configuration and state manager optimizations
 
 7. Conditional Auto-transition Evaluation (Low)
-   - Advanced optimization
-   - Requires enhanced auto-transition configuration
+  - Advanced optimization
+  - Requires enhanced auto-transition configuration
 
 ## Compatibility
 

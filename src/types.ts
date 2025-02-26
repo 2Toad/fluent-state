@@ -23,6 +23,102 @@ export interface FluentStateOptions {
   historyOptions?: TransitionHistoryOptions;
   /** Configuration options for the state manager */
   stateManagerConfig?: StateManagerConfig<unknown>;
+  /** Configuration options for debugging */
+  debug?: DebugConfig;
+}
+
+/**
+ * Log levels for the debugging system
+ */
+export type LogLevel = "none" | "error" | "warn" | "info" | "debug";
+
+/**
+ * Configuration for debugging and development tools
+ */
+export interface DebugConfig {
+  /** Log level for transition information */
+  logLevel?: LogLevel;
+  /** Whether to track performance metrics */
+  measurePerformance?: boolean;
+  /** Whether to save transition history */
+  keepHistory?: boolean;
+  /** Maximum number of history entries to keep */
+  historySize?: number;
+  /** Function to export state machine configuration */
+  exportConfig?: () => string;
+  /** Configuration for state machine visualization */
+  generateGraph?: {
+    /** Output format for the graph */
+    format: "mermaid" | "dot" | "svg";
+    /** Options for graph generation */
+    options?: {
+      /** Whether to include transition conditions in the graph */
+      showConditions?: boolean;
+      /** Whether to show transition groups as clusters */
+      groupClusters?: boolean;
+      /** Whether to include state metadata in the graph */
+      showMetadata?: boolean;
+      /** Whether to highlight the current state in the graph */
+      highlightCurrent?: boolean;
+      /** Whether to show transition history in the graph */
+      showHistory?: boolean;
+      /** Custom styling for graph elements */
+      styles?: {
+        /** Styles for groups */
+        groups?: Record<string, string>;
+        /** Styles for states */
+        states?: Record<string, string>;
+        /** Styles for transitions */
+        transitions?: Record<string, string>;
+      };
+    };
+  };
+  /** Custom log formatter function */
+  logFormat?: (entry: LogEntry) => string;
+  /** Custom log handlers */
+  logHandlers?: ((entry: LogEntry) => void)[];
+}
+
+/**
+ * Configuration for logging system
+ */
+export interface LogConfig {
+  /** Log level threshold */
+  logLevel?: LogLevel;
+  /** Whether to measure and log performance metrics */
+  measurePerformance?: boolean;
+  /** Custom log formatter function */
+  logFormat?: (entry: LogEntry) => string;
+}
+
+/**
+ * Structure of a log entry
+ */
+export interface LogEntry {
+  /** Timestamp when the log entry was created */
+  timestamp: number;
+  /** Log level of the entry */
+  level: LogLevel;
+  /** Log message */
+  message: string;
+  /** Optional context data */
+  context?: unknown;
+}
+
+/**
+ * Structure of a performance metric
+ */
+export interface PerformanceMetric {
+  /** Timestamp when the metric was recorded */
+  timestamp: number;
+  /** Category of the metric */
+  category: "transitionEvaluation" | "conditionExecution" | "contextUpdate";
+  /** Name of the specific operation */
+  name: string;
+  /** Duration in milliseconds */
+  duration: number;
+  /** Optional additional details */
+  details?: Record<string, unknown>;
 }
 
 export type BeforeTransitionHandler = (currentState: State, nextState: string) => boolean | Promise<boolean>;

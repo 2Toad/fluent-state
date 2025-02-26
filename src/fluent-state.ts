@@ -12,9 +12,13 @@ import {
   StateManagerConfig,
   AutoTransitionConfig,
   SerializedTransitionGroup,
+  DebugConfig,
+  LogLevel,
+  LogEntry,
 } from "./types";
 import { TransitionHistory } from "./transition-history";
 import { TransitionGroup } from "./transition-group";
+import { DebugManager } from "./debug-manager";
 
 /**
  * The main class for building and managing a state machine.
@@ -36,6 +40,9 @@ export class FluentState {
   /** The history of state transitions */
   history?: TransitionHistory;
 
+  /** Debugging tools and logging manager */
+  readonly debug: DebugManager;
+
   /** Whether transition history tracking is enabled */
   private historyEnabled: boolean;
 
@@ -54,6 +61,14 @@ export class FluentState {
     this.historyEnabled = options.enableHistory ?? false;
     this.stateManagerConfig = options.stateManagerConfig;
 
+    // Initialize the debug manager
+    this.debug = new DebugManager(this);
+
+    // Configure debug settings if provided
+    if (options.debug) {
+      this.configureDebug(options.debug);
+    }
+
     if (this.historyEnabled) {
       this.history = new TransitionHistory(options.historyOptions);
     }
@@ -61,6 +76,70 @@ export class FluentState {
     if (options.initialState) {
       this.state = this._addState(options.initialState);
     }
+  }
+
+  /**
+   * Configures debug settings for the state machine.
+   *
+   * @param config - Debug configuration options
+   * @returns The FluentState instance for chaining
+   */
+  configureDebug(config: DebugConfig): FluentState {
+    // Configure logging
+    this.debug.configureLogging({
+      logLevel: config.logLevel || "none",
+      measurePerformance: config.measurePerformance || false,
+      logFormat: config.logFormat,
+    });
+
+    // Add custom log handlers if provided
+    if (config.logHandlers && Array.isArray(config.logHandlers)) {
+      config.logHandlers.forEach((handler) => {
+        this.debug.addLogger(handler);
+      });
+    }
+
+    // Configure history tracking if requested in debug config
+    if (config.keepHistory && !this.historyEnabled) {
+      this.enableHistory({
+        maxSize: config.historySize,
+      });
+    }
+
+    return this;
+  }
+
+  /**
+   * Set the log level for the debug manager.
+   *
+   * @param level - The log level to set
+   * @returns The FluentState instance for chaining
+   */
+  setLogLevel(level: LogLevel): FluentState {
+    this.debug.setLogLevel(level);
+    return this;
+  }
+
+  /**
+   * Add a custom log handler.
+   *
+   * @param handler - Function that will receive log entries
+   * @returns The FluentState instance for chaining
+   */
+  addLogHandler(handler: (entry: LogEntry) => void): FluentState {
+    this.debug.addLogger(handler);
+    return this;
+  }
+
+  /**
+   * Enable performance measurement.
+   *
+   * @param enable - Whether to enable performance measurement
+   * @returns The FluentState instance for chaining
+   */
+  enablePerformanceMeasurement(enable: boolean = true): FluentState {
+    this.debug.enablePerformanceMeasurement(enable);
+    return this;
   }
 
   /**
@@ -146,11 +225,20 @@ export class FluentState {
    */
   async start(): Promise<FluentState> {
     if (this.state) {
+      // Log the start of the state machine
+      this.debug.info(`Starting state machine with initial state: ${this.state.name}`);
+
+      const startTime = performance.now();
+
       await this.state._triggerEnter(null);
       await this.observer.trigger(Lifecycle.AfterTransition, null, this.state);
       if (this.state.handlers.length > 0) {
         await Promise.all(this.state.handlers.map((handler) => handler(null, this.state)));
       }
+
+      // Record performance metric
+      const duration = performance.now() - startTime;
+      this.debug.recordMetric("transitionEvaluation", "start", duration);
 
       // Record the initial state as a transition from null
       if (this.historyEnabled && this.history) {
@@ -160,7 +248,12 @@ export class FluentState {
         );
 
         this.history.recordTransition(null, this.state.name, this.state.getContext(), true, groupWithInitialState?.getFullName());
+
+        // Log the transition
+        this.debug.logTransition(null, this.state.name, true, this.state.getContext());
       }
+    } else {
+      this.debug.warn("Attempted to start state machine without an initial state");
     }
     return this;
   }
@@ -173,32 +266,52 @@ export class FluentState {
    * @returns A Promise that resolves to true if the transition was successful, false otherwise
    */
   async transition(targetState?: string, context?: unknown): Promise<boolean> {
+    // Start timing the transition
+    const startTime = performance.now();
+
     // Check if target state is provided
     if (targetState === undefined) {
+      this.debug.error("No target state specified for transition", {
+        availableStates: Array.from(this.states.keys()),
+      });
       throw new TransitionError(`No target state specified. Available states: ${Array.from(this.states.keys()).join(", ")}`);
     }
 
     // Can't transition if there's no current state
     if (!this.state) {
+      this.debug.warn("Cannot transition when there is no current state");
       return false;
     }
 
     const currentState = this.state;
     const fromState = currentState.name;
 
+    this.debug.debug(`Evaluating transition: ${fromState} → ${targetState}`, context);
+
     // If the state doesn't exist yet, add it
     if (!this.states.has(targetState)) {
+      this.debug.info(`Creating new state: ${targetState}`);
       this._addState(targetState);
     }
 
     // Check if any group blocks the transition
     for (const group of this.groups.values()) {
       if (group.hasTransition(fromState, targetState) && !group.isEnabled(context)) {
+        this.debug.warn(`Transition ${fromState} → ${targetState} blocked: group ${group.getFullName()} is disabled`);
+
         if (!group.allowsManualTransitions(context)) {
           // Record the failed transition
           if (this.historyEnabled && this.history) {
             this.history.recordTransition(currentState, targetState, context, false, group.getFullName());
           }
+
+          // Record performance metric
+          const duration = performance.now() - startTime;
+          this.debug.recordMetric("transitionEvaluation", `${fromState}->${targetState}`, duration, {
+            blocked: true,
+            blockedBy: group.getFullName(),
+          });
+
           return false;
         }
       }
@@ -212,9 +325,19 @@ export class FluentState {
       // Run any middleware that could block the transition
       if (this.middlewares.length > 0 && !(await this._runMiddlewares(currentState, targetState))) {
         // Middleware blocked the transition
+        this.debug.warn(`Transition ${fromState} → ${targetState} blocked by middleware`);
+
         if (this.historyEnabled && this.history) {
           this.history.recordTransition(currentState, targetState, context, false);
         }
+
+        // Record performance metric
+        const duration = performance.now() - startTime;
+        this.debug.recordMetric("transitionEvaluation", `${fromState}->${targetState}`, duration, {
+          blocked: true,
+          blockedBy: "middleware",
+        });
+
         return false;
       }
 
@@ -225,9 +348,19 @@ export class FluentState {
       for (const group of groupsWithTransition) {
         if (!(await group._runMiddleware(fromState, targetState, context))) {
           // Group middleware blocked the transition
+          this.debug.warn(`Transition ${fromState} → ${targetState} blocked by group ${group.getFullName()} middleware`);
+
           if (this.historyEnabled && this.history) {
             this.history.recordTransition(currentState, targetState, context, false, group.getFullName());
           }
+
+          // Record performance metric
+          const duration = performance.now() - startTime;
+          this.debug.recordMetric("transitionEvaluation", `${fromState}->${targetState}`, duration, {
+            blocked: true,
+            blockedBy: `group-${group.getFullName()}`,
+          });
+
           return false;
         }
       }
@@ -247,14 +380,32 @@ export class FluentState {
         }
       }
 
+      // Record performance metric
+      const duration = performance.now() - startTime;
+      this.debug.recordMetric("transitionEvaluation", `${fromState}->${targetState}`, duration, {
+        success: result,
+      });
+
       return result;
     } else {
+      this.debug.warn(`Invalid transition: ${fromState} → ${targetState}`, {
+        validTransitions: this.state.transitions,
+      });
+
       // Record the failed transition
       if (this.historyEnabled && this.history) {
         // Find if this transition belongs to any group
         const groupWithTransition = Array.from(this.groups.values()).find((group) => group.hasTransition(fromState, targetState));
         this.history.recordTransition(currentState, targetState, context, false, groupWithTransition?.getFullName());
       }
+
+      // Record performance metric
+      const duration = performance.now() - startTime;
+      this.debug.recordMetric("transitionEvaluation", `${fromState}->${targetState}`, duration, {
+        blocked: true,
+        reason: "invalid-transition",
+      });
+
       return false;
     }
   }
@@ -295,6 +446,7 @@ export class FluentState {
       stateToRemove["clearAllDebounceTimers"]();
     }
 
+    this.debug.debug(`Removing state: ${name}`);
     this.states.delete(name);
 
     // Remove all transitions to this state from other states
@@ -311,6 +463,12 @@ export class FluentState {
     if (this.state === stateToRemove) {
       const nextState = this.states.values().next().value;
       this.state = nextState || null;
+
+      if (nextState) {
+        this.debug.info(`Current state removed, moved to: ${nextState.name}`);
+      } else {
+        this.debug.warn("Current state removed, no states remain in the machine");
+      }
     }
   }
 
@@ -326,6 +484,7 @@ export class FluentState {
       }
     });
 
+    this.debug.info("Clearing all states from the state machine");
     this.states.clear();
     this.state = null;
   }
@@ -348,6 +507,7 @@ export class FluentState {
    * @returns The FluentState instance for chaining.
    */
   observe(event: Lifecycle, handler: LifeCycleHandler): FluentState {
+    this.debug.debug(`Adding observer for lifecycle event: ${Lifecycle[event]}`);
     this.observer.add(event, handler);
     return this;
   }
@@ -364,6 +524,8 @@ export class FluentState {
       throw new StateError(`Unknown state: "${name}". Available states: ${Array.from(this.states.keys()).join(", ")}`);
     }
 
+    const prevState = this.state ? this.state.name : "null";
+    this.debug.info(`Setting state directly: ${prevState} → ${name}`);
     this.state = state;
     return state;
   }
@@ -380,6 +542,7 @@ export class FluentState {
       return state;
     }
 
+    this.debug.debug(`Adding new state: ${name}`);
     state = new State(name, this);
     this.states.set(name, state);
     return state;
@@ -413,13 +576,22 @@ export class FluentState {
   private async _runMiddlewares(currentState: State, nextStateName: string): Promise<boolean> {
     if (this.middlewares.length === 0) return true;
 
+    this.debug.debug(`Running ${this.middlewares.length} middleware functions for transition: ${currentState.name} → ${nextStateName}`);
+
     for (const middleware of this.middlewares) {
       let shouldProceed = false;
       const runNextMiddleware = () => {
         shouldProceed = true;
       };
+
+      const middlewareStartTime = performance.now();
       await middleware(currentState, nextStateName, runNextMiddleware);
+      const middlewareDuration = performance.now() - middlewareStartTime;
+
+      this.debug.recordMetric("contextUpdate", "middleware", middlewareDuration);
+
       if (!shouldProceed) {
+        this.debug.debug(`Middleware blocked transition: ${currentState.name} → ${nextStateName}`);
         return false; // Middleware blocked the transition
       }
     }
@@ -438,51 +610,101 @@ export class FluentState {
     // Get the context before transition for history recording
     const contextBeforeTransition = currentState.getContext();
 
+    this.debug.debug(`Executing transition: ${currentState.name} → ${nextState.name}`, {
+      context: contextBeforeTransition,
+      group: groupName,
+    });
+
     // BeforeTransition must occur first to allow for any pre-transition logic or validation,
     // and to provide an opportunity to cancel the transition if necessary.
+    const beforeStartTime = performance.now();
     const results = await this.observer.trigger(Lifecycle.BeforeTransition, currentState, nextState.name);
+    const beforeDuration = performance.now() - beforeStartTime;
+
+    this.debug.recordMetric("contextUpdate", "beforeTransition", beforeDuration);
+
     if (results.includes(false)) {
+      this.debug.warn(`Transition ${currentState.name} → ${nextState.name} cancelled by BeforeTransition hook`);
+
       // Record failed transition due to BeforeTransition hook returning false
       if (this.historyEnabled && this.history) {
         this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, false, groupName);
       }
+
+      // Log the failed transition
+      this.debug.logTransition(currentState, nextState.name, false, contextBeforeTransition);
+
       return false;
     }
 
     // FailedTransition must occur next to allow for any failed transition logic, including whether
     // the transition has been cancelled.
     if (!currentState.can(nextState.name)) {
+      this.debug.warn(`Invalid transition: ${currentState.name} → ${nextState.name}`);
+
+      const failedStartTime = performance.now();
       await this.observer.trigger(Lifecycle.FailedTransition, currentState, nextState.name);
+      const failedDuration = performance.now() - failedStartTime;
+
+      this.debug.recordMetric("contextUpdate", "failedTransition", failedDuration);
 
       // Record failed transition due to invalid transition
       if (this.historyEnabled && this.history) {
         this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, false, groupName);
       }
+
+      // Log the failed transition
+      this.debug.logTransition(currentState, nextState.name, false, contextBeforeTransition);
+
       return false;
     }
 
     // Trigger exit hook before state change
+    const exitStartTime = performance.now();
     await currentState._triggerExit(nextState);
+    const exitDuration = performance.now() - exitStartTime;
+
+    this.debug.recordMetric("contextUpdate", "exitHook", exitDuration);
+    this.debug.debug(`Exit hooks completed for state: ${currentState.name}`);
 
     this.setState(nextState.name);
 
     // Trigger enter hook after state change but before AfterTransition
+    const enterStartTime = performance.now();
     await nextState._triggerEnter(currentState);
+    const enterDuration = performance.now() - enterStartTime;
+
+    this.debug.recordMetric("contextUpdate", "enterHook", enterDuration);
+    this.debug.debug(`Enter hooks completed for state: ${nextState.name}`);
 
     // AfterTransition is triggered after the state has changed but before any state-specific handlers.
     // This allows for any general post-transition logic.
+    const afterStartTime = performance.now();
     await this.observer.trigger(Lifecycle.AfterTransition, currentState, nextState);
+    const afterDuration = performance.now() - afterStartTime;
+
+    this.debug.recordMetric("contextUpdate", "afterTransition", afterDuration);
 
     // State-specific handlers are executed last. These are defined using `when().do()` and
     // are meant for actions that should occur specifically after entering this new state.
     if (nextState.handlers.length > 0) {
+      this.debug.debug(`Executing ${nextState.handlers.length} state-specific handlers for: ${nextState.name}`);
+
+      const handlersStartTime = performance.now();
       await Promise.all(nextState.handlers.map((handler) => handler(currentState, nextState)));
+      const handlersDuration = performance.now() - handlersStartTime;
+
+      this.debug.recordMetric("contextUpdate", "stateHandlers", handlersDuration);
     }
 
     // Record successful transition
     if (this.historyEnabled && this.history) {
       this.history.recordTransition(currentState, nextState.name, contextBeforeTransition, true, groupName);
     }
+
+    // Log the successful transition
+    this.debug.logTransition(currentState, nextState.name, true, contextBeforeTransition);
+    this.debug.info(`Transition completed: ${currentState.name} → ${nextState.name}`);
 
     return true;
   }
@@ -514,6 +736,7 @@ export class FluentState {
       }
     }
 
+    this.debug.debug(`Creating transition group: ${name}`, { parentGroup: parentGroupObj?.getFullName() });
     const group = new TransitionGroup(name, this, parentGroupObj);
     this.groups.set(name, group);
 
@@ -537,6 +760,8 @@ export class FluentState {
       throw new StateError(`Group with name "${fullName}" already exists`);
     }
 
+    this.debug.debug(`Creating transition group from config: ${fullName}`);
+
     // Create the new group, without connecting to parent yet
     const group = new TransitionGroup(fullName, this);
 
@@ -550,6 +775,7 @@ export class FluentState {
     if (serialized.parentGroup && this.groups.has(serialized.parentGroup)) {
       const parentGroup = this.groups.get(serialized.parentGroup)!;
       group.setParent(parentGroup);
+      this.debug.debug(`Connected group ${fullName} to parent: ${serialized.parentGroup}`);
     }
 
     return group;
@@ -575,6 +801,8 @@ export class FluentState {
     const group = this.groups.get(name);
     if (!group) return false;
 
+    this.debug.debug(`Removing transition group: ${name}`);
+
     // The parent-child relationships will be automatically cleaned up
     // when the group is removed from the map
 
@@ -596,6 +824,7 @@ export class FluentState {
    * @returns An array of serialized group configurations
    */
   exportGroups(): SerializedTransitionGroup[] {
+    this.debug.debug(`Exporting ${this.groups.size} transition groups`);
     return this.getAllGroups().map((group) => group.serialize());
   }
 
@@ -615,6 +844,8 @@ export class FluentState {
       replaceExisting?: boolean;
     } = {},
   ): FluentState {
+    this.debug.info(`Importing ${groups.length} transition groups`, options);
+
     // First pass: Create all groups without setting up parent-child relationships
     const createdGroups = new Map<string, TransitionGroup>();
 
@@ -623,11 +854,13 @@ export class FluentState {
 
       // Skip if the group already exists and skipExisting is true
       if (this.groups.has(fullName) && options.skipExisting) {
+        this.debug.debug(`Skipping existing group: ${fullName}`);
         continue;
       }
 
       // Remove existing group if replaceExisting is true
       if (this.groups.has(fullName) && options.replaceExisting) {
+        this.debug.debug(`Replacing existing group: ${fullName}`);
         this.removeGroup(fullName);
       }
 
@@ -654,6 +887,7 @@ export class FluentState {
       if (serialized.parentGroup && createdGroups.has(serialized.parentGroup)) {
         const parentGroup = createdGroups.get(serialized.parentGroup)!;
         group.setParent(parentGroup);
+        this.debug.debug(`Connected group ${fullName} to parent: ${serialized.parentGroup}`);
       }
     }
 
