@@ -349,9 +349,16 @@ describe("DebugManager", () => {
   });
 
   describe("Integration with FluentState", () => {
-    it("should be initialized with FluentState instance", () => {
-      const newFluentState = new FluentState();
-      expect(newFluentState.debug).to.be.instanceOf(DebugManager);
+    it("should configure debug settings from FluentState options", () => {
+      const fs = new FluentState({
+        initialState: "idle",
+        debug: {
+          logLevel: "info",
+          measurePerformance: true,
+        },
+      });
+
+      expect(fs.debug).to.be.an.instanceOf(DebugManager);
     });
 
     it("should configure debug settings from FluentState options", () => {
@@ -554,6 +561,71 @@ describe("DebugManager", () => {
           expect(historyEntry.context.password).to.equal("secret123"); // Should not be redacted
         }
       }
+    });
+  });
+
+  describe("Graph Visualization", () => {
+    it("generates a Mermaid graph representation", () => {
+      const fs = new FluentState({ initialState: "idle" });
+
+      // Add some states and transitions
+      fs.from("idle").to("active");
+      fs.from("active").to("paused");
+      fs.from("paused").to("active");
+      fs.from("paused").to("stopped");
+      fs.from("stopped").to("idle");
+
+      // Generate Mermaid graph
+      const graph = fs.debug.generateGraph({ format: "mermaid" });
+
+      // Verify the graph contains expected elements
+      expect(graph).to.include("stateDiagram-v2");
+      expect(graph).to.include("idle --> active");
+      expect(graph).to.include("active --> paused");
+      expect(graph).to.include("paused --> active");
+      expect(graph).to.include("paused --> stopped");
+      expect(graph).to.include("stopped --> idle");
+    });
+
+    it("generates a DOT graph representation", () => {
+      const fs = new FluentState({ initialState: "idle" });
+
+      // Add some states and transitions
+      fs.from("idle").to("active");
+      fs.from("active").to("paused");
+      fs.from("paused").to("idle");
+
+      // Generate DOT graph
+      const graph = fs.debug.generateGraph({ format: "dot" });
+
+      // Verify the graph contains expected elements
+      expect(graph).to.include("digraph StateMachine");
+      expect(graph).to.include('"idle" -> "active"');
+      expect(graph).to.include('"active" -> "paused"');
+      expect(graph).to.include('"paused" -> "idle"');
+    });
+
+    it("handles transition groups in graph visualization", () => {
+      const fs = new FluentState({ initialState: "idle" });
+
+      // Create a transition group
+      const mainFlow = fs.createGroup("mainFlow");
+      mainFlow.from("idle").to("loading");
+      mainFlow.from("loading").to("ready");
+      mainFlow.from("loading").to("error");
+
+      // Generate graph with group clusters
+      const graph = fs.debug.generateGraph({
+        format: "mermaid",
+        options: {
+          groupClusters: true,
+        },
+      });
+
+      // Verify group is included in the visualization
+      expect(graph).to.include("mainFlow Group");
+      expect(graph).to.include('state "mainFlow"');
+      expect(graph).to.include("idle --> loading");
     });
   });
 });

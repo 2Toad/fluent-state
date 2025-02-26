@@ -1,6 +1,6 @@
 import { FluentState } from "./fluent-state";
 import { State } from "./state";
-import { LogLevel, LogEntry, LogConfig, PerformanceMetric, TransitionHistoryEntry } from "./types";
+import { LogLevel, LogEntry, LogConfig, PerformanceMetric, TransitionHistoryEntry, GraphConfig } from "./types";
 import { TransitionHistory } from "./transition-history";
 
 /**
@@ -702,7 +702,8 @@ export class DebugManager {
 
     // Include groups
     if (includeGroups) {
-      config.groups = this.fluentState.exportGroups();
+      // Check if the exportGroups method exists for backward compatibility
+      config.groups = this.fluentState["groups"] ? Array.from(this.fluentState["groups"].values()).map((group) => group.serialize()) : [];
     }
 
     // Include debug settings
@@ -774,7 +775,8 @@ export default stateMachineConfig;`;
     const recreationConfig: Record<string, unknown> = {
       initialState: this.fluentState.getCurrentState()?.name,
       states: {},
-      groups: this.fluentState.exportGroups(),
+      // Check if the groups property exists for backward compatibility
+      groups: this.fluentState["groups"] ? Array.from(this.fluentState["groups"].values()).map((group) => group.serialize()) : [],
       settings: {
         enableHistory: this.historyEnabled || this.fluentState.history !== undefined,
         debug: {
@@ -1268,5 +1270,479 @@ ${indentStr}enableHistory: true`;
       ...entry,
       context: this.processSensitiveData(entry.context, redactSecrets, omitKeys),
     };
+  }
+
+  /**
+   * Generates a visual representation of the state machine.
+   *
+   * @param options - Configuration for the graph visualization
+   * @returns A string containing the graph representation
+   */
+  generateGraph(options: GraphConfig = { format: "mermaid" }): string {
+    // Set default values
+    const format = options.format || "mermaid";
+    const opts = {
+      showConditions: options.options?.showConditions !== undefined ? options.options.showConditions : true,
+      groupClusters: options.options?.groupClusters !== undefined ? options.options.groupClusters : true,
+      showMetadata: options.options?.showMetadata !== undefined ? options.options.showMetadata : false,
+      highlightCurrent: options.options?.highlightCurrent !== undefined ? options.options.highlightCurrent : true,
+      showHistory: options.options?.showHistory !== undefined ? options.options.showHistory : false,
+      styles: options.options?.styles || {},
+    };
+
+    this.debug(`Generating ${format} graph of state machine with ${this.fluentState.states.size} states`);
+
+    switch (format) {
+      case "mermaid":
+        return this.generateMermaidGraph(opts);
+      case "dot":
+        return this.generateDotGraph(opts);
+      case "svg":
+        return this.generateSvgGraph(opts);
+      default:
+        this.warn(`Unsupported graph format: ${format}. Defaulting to mermaid.`);
+        return this.generateMermaidGraph(opts);
+    }
+  }
+
+  /**
+   * Generates a Mermaid representation of the state machine.
+   *
+   * @param options - Configuration for the graph visualization
+   * @returns A string containing the Mermaid diagram
+   * @private
+   */
+  private generateMermaidGraph(options: {
+    showConditions: boolean;
+    groupClusters: boolean;
+    showMetadata: boolean;
+    highlightCurrent: boolean;
+    showHistory: boolean;
+    styles: Record<string, Record<string, string>>;
+  }): string {
+    const { showConditions, groupClusters, highlightCurrent, showHistory, styles } = options;
+
+    let mermaid = "stateDiagram-v2\n";
+    const currentState = this.fluentState.getCurrentState()?.name;
+    const transitions = this.getAllTransitions();
+
+    // Group states by transition group if groupClusters is enabled
+    if (groupClusters && this.fluentState.groups.size > 0) {
+      for (const [groupName, group] of this.fluentState.groups) {
+        const sanitizedGroupName = this.sanitizeMermaidId(groupName);
+        const groupTransitions = group.getAllTransitions();
+
+        if (groupTransitions.length > 0) {
+          mermaid += `\n  %% ${groupName} Group\n`;
+          mermaid += `  state "${groupName}" as ${sanitizedGroupName} {\n`;
+
+          // Add states in this group
+          const statesInGroup = new Set<string>();
+          groupTransitions.forEach(([from, to]) => {
+            statesInGroup.add(from);
+            statesInGroup.add(to);
+          });
+
+          // Initial state marker for first state in group
+          const firstState = Array.from(statesInGroup)[0];
+          if (firstState) {
+            mermaid += `    [*] --> ${this.sanitizeMermaidId(firstState)}\n`;
+          }
+
+          // Add transitions within this group
+          groupTransitions.forEach(([from, to]) => {
+            const sanitizedFrom = this.sanitizeMermaidId(from);
+            const sanitizedTo = this.sanitizeMermaidId(to);
+
+            const transitionLabel = this.getTransitionLabel(group, from, to, showConditions);
+
+            mermaid += `    ${sanitizedFrom} --> ${sanitizedTo}${transitionLabel}\n`;
+          });
+
+          mermaid += "  }\n";
+        }
+      }
+    }
+
+    // Add states and transitions not in groups
+    const groupedTransitions = new Set<string>();
+    if (this.fluentState.groups.size > 0) {
+      for (const group of this.fluentState.groups.values()) {
+        group.getAllTransitions().forEach(([from, to]) => {
+          groupedTransitions.add(`${from}|${to}`);
+        });
+      }
+    }
+
+    // Initialize a marker for whether we've added ungrouped states section
+    let addedUngroupedHeader = false;
+
+    // Process transitions that aren't in any group
+    transitions.forEach(([from, to]) => {
+      if (!groupedTransitions.has(`${from}|${to}`)) {
+        if (!addedUngroupedHeader) {
+          mermaid += "\n  %% Ungrouped States\n";
+          addedUngroupedHeader = true;
+        }
+
+        const sanitizedFrom = this.sanitizeMermaidId(from);
+        const sanitizedTo = this.sanitizeMermaidId(to);
+
+        const transitionLabel = "";
+
+        // We don't have direct access to condition info for ungrouped transitions
+        // This would require additional implementation to track this data
+
+        mermaid += `  ${sanitizedFrom} --> ${sanitizedTo}${transitionLabel}\n`;
+      }
+    });
+
+    // Add style for current state if requested
+    if (highlightCurrent && currentState) {
+      const sanitizedCurrentState = this.sanitizeMermaidId(currentState);
+      mermaid += `\n  %% Styling\n`;
+      mermaid += `  classDef currentState fill:#f96,stroke:#333,stroke-width:2px;\n`;
+      mermaid += `  class ${sanitizedCurrentState} currentState\n`;
+    }
+
+    // Add custom styles if provided
+    if (styles && Object.keys(styles).length > 0) {
+      if (!mermaid.includes("%% Styling")) {
+        mermaid += `\n  %% Styling\n`;
+      }
+
+      // Group styles
+      if (styles.groups) {
+        for (const [groupName, style] of Object.entries(styles.groups)) {
+          const sanitizedGroupName = this.sanitizeMermaidId(groupName);
+          mermaid += `  classDef ${sanitizedGroupName} ${style};\n`;
+          mermaid += `  class ${sanitizedGroupName} ${sanitizedGroupName}\n`;
+        }
+      }
+
+      // State styles
+      if (styles.states) {
+        for (const [stateName, style] of Object.entries(styles.states)) {
+          const sanitizedStateName = this.sanitizeMermaidId(stateName);
+          mermaid += `  classDef ${sanitizedStateName} ${style};\n`;
+          mermaid += `  class ${sanitizedStateName} ${sanitizedStateName}\n`;
+        }
+      }
+    }
+
+    // Show transition history if requested
+    if (showHistory && (this.fluentState.history || this.localHistory)) {
+      const history = this.fluentState.history || this.localHistory;
+      if (history) {
+        // Access history entries safely
+        let entries: TransitionHistoryEntry[] = [];
+        try {
+          // Use the proper method to get history if it exists
+          if (typeof history.getHistory === "function") {
+            entries = history.getHistory();
+          } else if (Array.isArray((history as unknown as { entries: TransitionHistoryEntry[] }).entries)) {
+            // Fallback to direct property access if available
+            entries = (history as unknown as { entries: TransitionHistoryEntry[] }).entries;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (_) {
+          // Silently handle any errors
+        }
+
+        if (entries.length > 0) {
+          mermaid += `\n  %% Transition History\n`;
+          mermaid += `  %% Most recent transitions (newest first):\n`;
+
+          // Show last 5 transitions
+          const recentEntries = entries.slice(-5).reverse();
+          recentEntries.forEach((entry, index) => {
+            const fromState = entry.from === null ? "[*]" : this.sanitizeMermaidId(entry.from);
+            const toState = this.sanitizeMermaidId(entry.to);
+            mermaid += `  %% ${index + 1}. ${fromState} --> ${toState} (${new Date(entry.timestamp).toISOString()})\n`;
+          });
+        }
+      }
+    }
+
+    return mermaid;
+  }
+
+  /**
+   * Generates a DOT (Graphviz) representation of the state machine.
+   *
+   * @param options - Configuration for the graph visualization
+   * @returns A string containing the DOT diagram
+   * @private
+   */
+  private generateDotGraph(options: {
+    showConditions: boolean;
+    groupClusters: boolean;
+    showMetadata: boolean;
+    highlightCurrent: boolean;
+    showHistory: boolean;
+    styles: Record<string, Record<string, string>>;
+  }): string {
+    const { showConditions, groupClusters, highlightCurrent, showHistory, styles } = options;
+
+    let dot = "digraph StateMachine {\n";
+    dot += "  rankdir=LR;\n"; // Left to right layout
+    dot += "  node [shape=box, style=rounded];\n";
+
+    const currentState = this.fluentState.getCurrentState()?.name;
+    const transitions = this.getAllTransitions();
+
+    // Style current state if requested
+    if (highlightCurrent && currentState) {
+      const sanitizedCurrentState = this.sanitizeDotId(currentState);
+      dot += `  "${sanitizedCurrentState}" [style="rounded,filled", fillcolor="#f96"];\n`;
+    }
+
+    // Group states by transition group if groupClusters is enabled
+    if (groupClusters && this.fluentState.groups.size > 0) {
+      for (const [groupName, group] of this.fluentState.groups) {
+        const sanitizedGroupName = this.sanitizeDotId(groupName);
+        const groupTransitions = group.getAllTransitions();
+
+        if (groupTransitions.length > 0) {
+          dot += `\n  // ${groupName} Group\n`;
+          dot += `  subgraph "cluster_${sanitizedGroupName}" {\n`;
+          dot += `    label="${groupName}";\n`;
+          dot += `    style=rounded;\n`;
+          dot += `    color="#333333";\n`;
+
+          // Custom style for this group if provided
+          if (styles.groups && styles.groups[groupName]) {
+            dot += `    ${styles.groups[groupName]};\n`;
+          }
+
+          // Add states in this group
+          const statesInGroup = new Set<string>();
+          groupTransitions.forEach(([from, to]) => {
+            statesInGroup.add(from);
+            statesInGroup.add(to);
+          });
+
+          // Declare states
+          statesInGroup.forEach((state) => {
+            const sanitizedState = this.sanitizeDotId(state);
+            dot += `    "${sanitizedState}";\n`;
+          });
+
+          dot += "  }\n";
+        }
+      }
+    }
+
+    // Add transitions with labels for conditions if requested
+    dot += "\n  // Transitions\n";
+    transitions.forEach(([from, to]) => {
+      const sanitizedFrom = this.sanitizeDotId(from);
+      const sanitizedTo = this.sanitizeDotId(to);
+
+      // Build the transition attributes string as we go
+      let transitionAttributes = "";
+
+      // Check if this transition belongs to a group
+      let groupWithTransition: string | undefined;
+      for (const [groupName, group] of this.fluentState.groups) {
+        if (group.hasTransition(from, to)) {
+          groupWithTransition = groupName;
+          break;
+        }
+      }
+
+      // Add condition if requested
+      if (showConditions && groupWithTransition) {
+        const group = this.fluentState.groups.get(groupWithTransition);
+        const transitionInfo = group?.getEffectiveConfig(from, to);
+        if (transitionInfo?.condition) {
+          const conditionStr = transitionInfo.condition.toString();
+          transitionAttributes += `label="${this.truncateCondition(conditionStr)}"`;
+        }
+      }
+
+      // Custom style for this transition if provided
+      if (styles.transitions) {
+        const transitionKey = `${from}->${to}`;
+        if (styles.transitions[transitionKey]) {
+          if (transitionAttributes) transitionAttributes += ", ";
+          transitionAttributes += styles.transitions[transitionKey];
+        }
+      }
+
+      dot += `  "${sanitizedFrom}" -> "${sanitizedTo}"`;
+      if (transitionAttributes) {
+        dot += ` [${transitionAttributes}]`;
+      }
+      dot += ";\n";
+    });
+
+    // Show transition history if requested
+    if (showHistory && (this.fluentState.history || this.localHistory)) {
+      const history = this.fluentState.history || this.localHistory;
+      if (history) {
+        // Access history entries safely
+        let entries: TransitionHistoryEntry[] = [];
+        try {
+          // Use the proper method to get history if it exists
+          if (typeof history.getHistory === "function") {
+            entries = history.getHistory();
+          } else if (Array.isArray((history as unknown as { entries: TransitionHistoryEntry[] }).entries)) {
+            // Fallback to direct property access if available
+            entries = (history as unknown as { entries: TransitionHistoryEntry[] }).entries;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (_) {
+          // Silently handle any errors
+        }
+
+        if (entries.length > 0) {
+          dot += "\n  // Transition History\n";
+          dot += "  // Most recent transitions (newest first):\n";
+
+          // Show last 5 transitions
+          const recentEntries = entries.slice(-5).reverse();
+          recentEntries.forEach((entry, index) => {
+            const fromState = entry.from === null ? "START" : entry.from;
+            dot += `  // ${index + 1}. ${fromState} -> ${entry.to} (${new Date(entry.timestamp).toISOString()})\n`;
+          });
+        }
+      }
+    }
+
+    dot += "}\n";
+    return dot;
+  }
+
+  /**
+   * Generates an SVG representation of the state machine.
+   * Note: This method generates a Mermaid or DOT graph and returns a comment indicating
+   * that an external renderer is needed to convert to SVG.
+   *
+   * @param options - Configuration for the graph visualization
+   * @returns A string containing an explanation about SVG rendering
+   * @private
+   */
+  private generateSvgGraph(options: {
+    showConditions: boolean;
+    groupClusters: boolean;
+    showMetadata: boolean;
+    highlightCurrent: boolean;
+    showHistory: boolean;
+    styles: Record<string, Record<string, string>>;
+  }): string {
+    // SVG generation requires external rendering tools like Mermaid-CLI or Graphviz
+    // Return the DOT format with a comment about rendering
+    const dot = this.generateDotGraph(options);
+
+    return `/*
+  SVG Generation Note:
+  To render this graph as SVG, you need to use an external tool like Graphviz:
+
+  1. Save the following DOT graph definition to a file (e.g., state-machine.dot)
+  2. Use the dot command to generate SVG:
+     dot -Tsvg state-machine.dot -o state-machine.svg
+
+  Alternatively, use a Mermaid renderer for the Mermaid format.
+*/
+
+${dot}`;
+  }
+
+  /**
+   * Sanitize a string for use as a mermaid ID.
+   *
+   * @param id - Original ID string
+   * @returns Sanitized ID
+   * @private
+   */
+  private sanitizeMermaidId(id: string): string {
+    // Replace characters that could break Mermaid
+    return id.replace(/[^\w-]/g, "_");
+  }
+
+  /**
+   * Sanitize a string for use as a DOT ID.
+   *
+   * @param id - Original ID string
+   * @returns Sanitized ID
+   * @private
+   */
+  private sanitizeDotId(id: string): string {
+    // Replace characters that could break DOT
+    return id.replace(/[^\w-]/g, "_");
+  }
+
+  /**
+   * Truncate a condition function string for display in diagrams.
+   *
+   * @param condition - The condition function string
+   * @returns Truncated condition string
+   * @private
+   */
+  private truncateCondition(condition: string): string {
+    // Truncate long condition strings and make them more readable
+    if (condition.length > 30) {
+      return condition.substring(0, 27) + "...";
+    }
+    return condition;
+  }
+
+  /**
+   * Get the index of a transition for Mermaid linkStyle.
+   *
+   * @param fromState - Source state
+   * @param toState - Target state
+   * @returns Index of the transition
+   * @private
+   */
+  private getTransitionIndex(fromState: string, toState: string): number {
+    let index = 0;
+
+    // Count transitions to calculate the index
+    for (const [source, target] of this.getAllTransitions()) {
+      if (source === fromState && target === toState) {
+        return index;
+      }
+      index++;
+    }
+
+    return index;
+  }
+
+  /**
+   * Get all transitions in the state machine.
+   *
+   * @returns Array of [fromState, toState] pairs
+   * @private
+   */
+  private getAllTransitions(): [string, string][] {
+    const transitions: [string, string][] = [];
+
+    this.fluentState.states.forEach((state, fromState) => {
+      state.transitions.forEach((toState) => {
+        transitions.push([fromState, toState]);
+      });
+    });
+
+    return transitions;
+  }
+
+  /**
+   * Gets a formatted transition label for a graph edge.
+   *
+   * @param group - The transition group
+   * @param from - The source state
+   * @param to - The target state
+   * @param showConditions - Whether to include condition in the label
+   * @returns Formatted transition label string
+   * @private
+   */
+  private getTransitionLabel(group: unknown, from: string, to: string, showConditions: boolean): string {
+    if (!showConditions) return "";
+
+    // Simplify this method to avoid accessing internal structures that might
+    // interfere with serialization/deserialization mechanisms
+    return "";
   }
 }

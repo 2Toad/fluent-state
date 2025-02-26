@@ -115,7 +115,7 @@ const fs = new FluentState({
 });
 
 // Define states and transitions
-fs.from("idle").to("running");
+fs.from("stopped").to("running");
 fs.from("running").to("paused");
 fs.from("paused").to("stopped");
 
@@ -148,7 +148,7 @@ const fs = new FluentState({
 });
 
 // Define states and transitions
-fs.from("idle").to("running");
+fs.from("stopped").to("running");
 fs.from("running").to("completed");
 
 // Start the state machine
@@ -175,12 +175,12 @@ failedTransitions.forEach(entry => {
 import { FluentState } from "@2toad/fluent-state";
 
 const fs = new FluentState({
-  initialState: "idle",
+  initialState: "stopped",
   enableHistory: true
 });
 
 // Define states and transitions
-fs.from("idle").to("running");
+fs.from("stopped").to("running");
 fs.from("running").to("paused");
 fs.from("paused").to("running");
 fs.from("running").to("completed");
@@ -219,12 +219,12 @@ timeTravel(1);
 import { FluentState } from "@2toad/fluent-state";
 
 const fs = new FluentState({
-  initialState: "idle",
+  initialState: "stopped",
   enableHistory: true
 });
 
 // Define states and transitions
-fs.from("idle").to("running");
+fs.from("stopped").to("running");
 fs.from("running").to("paused");
 fs.from("paused").to("running");
 fs.from("running").to("completed");
@@ -275,7 +275,7 @@ console.log("Transitions:", Object.fromEntries(
 import { FluentState, TransitionHistory } from "@2toad/fluent-state";
 
 const fs = new FluentState({
-  initialState: "idle",
+  initialState: "stopped",
   enableHistory: true,
   historyOptions: {
     includeContext: true,

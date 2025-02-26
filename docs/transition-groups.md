@@ -799,13 +799,89 @@ fluentState.importGroups(
 );
 ```
 
-The serialization process preserves the entire group hierarchy, including parent-child relationships. When importing groups, the hierarchy is reconstructed with all parent-child relationships restored.
+The serialization process preserves the entire group hierarchy, including parent-child relationships, transition configurations, and transition tags. When importing groups, the hierarchy is reconstructed with all parent-child relationships restored.
+
+#### Condition Maps
+
+When deserializing groups, you need to provide condition functions separately since functions can't be serialized. The `conditionMap` parameter supports several formats:
+
+```typescript
+// Nested format with group name
+const conditionMap = {
+  groupName: {
+    fromState: {
+      toState: (context) => context.isValid
+    }
+  }
+};
+
+// Flat format without group name
+const conditionMap = {
+  fromState: {
+    toState: (context) => context.isValid
+  }
+};
+
+// Direct function format
+const conditionMap = {
+  fromState: (context) => context.someValue > 10
+};
+```
+
+The system will try to find the right condition function by checking these formats in order.
+
+#### Tags and Configuration Preservation
+
+When serializing and deserializing transitions, both tags and configuration options are preserved:
+
+```typescript
+// Original group with tagged transitions and configurations
+const group = fluentState.createGroup("workflow");
+
+group
+  .from("draft")
+  .withTags("document", "editable")
+  .to("review", {
+    priority: 10,
+    debounce: 300,
+    condition: (_, context) => context.isComplete
+  });
+
+// Serialize the group
+const serialized = group.serialize();
+
+// Later, deserialize with condition functions
+const conditionMap = {
+  draft: {
+    review: (context) => context.isComplete
+  }
+};
+
+// The new group will have the same tags and configuration
+const newGroup = fluentState.createGroupFromConfig(serialized, conditionMap);
+
+// The transition's tags and configuration are preserved
+const transition = newGroup.getEffectiveConfig("draft", "review");
+console.log(transition.tags); // ["document", "editable"]
+console.log(transition.priority); // 10
+console.log(transition.debounce); // 300
+```
+
+Complete example of exporting and importing a hierarchy of groups:
 
 ```typescript
 // Export a hierarchy of groups
 const parentGroup = fluentState.createGroup("parent");
 const childGroup = parentGroup.createChildGroup("child");
 const grandchildGroup = childGroup.createChildGroup("grandchild");
+
+// Add transitions with tags and configuration
+parentGroup
+  .from("start")
+  .withTags("init")
+  .to("processing", {
+    priority: 10
+  });
 
 // Export all groups including their hierarchy
 const serializedGroups = fluentState.exportGroups();
@@ -824,9 +900,12 @@ const newGrandchild = newFluentState.group("grandchild");
 // Parent-child relationships are restored
 console.log(newChild.getParent() === newParent); // true
 console.log(newGrandchild.getParent() === newChild); // true
-```
 
-Note that since functions can't be serialized, you need to provide condition functions separately when deserializing.
+// Tags and configurations are preserved
+const transition = newParent.getEffectiveConfig("start", "processing");
+console.log(transition.tags); // ["init"]
+console.log(transition.priority); // 10
+```
 
 ### 13. Integration with Transition History
 
@@ -1152,33 +1231,4 @@ This example demonstrates:
 
 - `group.onTransition(handler: TransitionHandler): TransitionGroup` - Adds a transition event handler
 - `group.onceTransition(handler: TransitionHandler): TransitionGroup` - Adds a one-time transition event handler
-- `group.offTransition(handler: TransitionHandler): TransitionGroup` - Removes a transition event handler
-- `group.onEnable(handler: EnableHandler): TransitionGroup` - Adds an enable event handler
-- `group.onceEnable(handler: EnableHandler): TransitionGroup` - Adds a one-time enable event handler
-- `group.offEnable(handler: EnableHandler): TransitionGroup` - Removes an enable event handler
-- `group.onDisable(handler: DisableHandler): TransitionGroup` - Adds a disable event handler
-- `group.onceDisable(handler: DisableHandler): TransitionGroup` - Adds a one-time disable event handler
-- `group.offDisable(handler: DisableHandler): TransitionGroup` - Removes a disable event handler
-
-#### Middleware
-
-- `group.middleware(middleware: GroupTransitionMiddleware): TransitionGroup` - Adds middleware to intercept transitions
-- `group.removeMiddleware(middleware: GroupTransitionMiddleware): TransitionGroup` - Removes middleware
-
-#### Serialization
-
-- `group.serialize(): SerializedTransitionGroup` - Serializes the group to a plain object
-- `group.deserialize(serialized: SerializedTransitionGroup, conditionMap?: Record<string, Record<string, AutoTransitionConfig["condition"]>>): TransitionGroup` - Deserializes a group from a plain object
-
-### FluentState Methods for Groups
-
-- `fluentState.group(name: string): TransitionGroup | null` - Gets a group by name
-- `fluentState.removeGroup(name: string): boolean` - Removes a group
-- `fluentState.getAllGroups(): TransitionGroup[]` - Gets all groups
-- `fluentState.createGroupFromConfig(serialized: SerializedTransitionGroup, conditionMap?: Record<string, Record<string, AutoTransitionConfig["condition"]>>): TransitionGroup` - Creates a group from serialized configuration
-- `fluentState.exportGroups(): SerializedTransitionGroup[]` - Exports all groups as serialized configurations
-- `fluentState.importGroups(groups: SerializedTransitionGroup[], conditionMaps?: Record<string, Record<string, Record<string, AutoTransitionConfig["condition"]>>>, options?: { skipExisting?: boolean; replaceExisting?: boolean }): FluentState` - Imports groups from serialized configurations
-
-### TransitionHistory Methods for Groups
-
-- `history.getTransitionsForGroup(groupName: string): TransitionHistoryEntry[]` - Gets all transitions belonging to a specific group 
+- `group.offTransition(handler: TransitionHandler): TransitionGroup`

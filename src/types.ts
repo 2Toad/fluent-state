@@ -33,6 +33,66 @@ export interface FluentStateOptions {
 export type LogLevel = "none" | "error" | "warn" | "info" | "debug";
 
 /**
+ * Configuration for graph visualization options
+ */
+export interface GraphConfig {
+  /**
+   * Output format for the generated graph
+   */
+  format: "mermaid" | "dot" | "svg";
+
+  /**
+   * Visualization options
+   */
+  options?: {
+    /**
+     * Whether to show transition conditions in the graph
+     */
+    showConditions?: boolean;
+
+    /**
+     * Whether to group states by their transition groups
+     */
+    groupClusters?: boolean;
+
+    /**
+     * Whether to include state metadata in the graph
+     */
+    showMetadata?: boolean;
+
+    /**
+     * Whether to highlight the current state
+     */
+    highlightCurrent?: boolean;
+
+    /**
+     * Whether to show transition history
+     */
+    showHistory?: boolean;
+
+    /**
+     * Custom styles for graph elements
+     */
+    styles?: {
+      /**
+       * Styles for transition groups
+       */
+      groups?: Record<string, string>;
+
+      /**
+       * Styles for states
+       */
+      states?: Record<string, string>;
+
+      /**
+       * Styles for transitions
+       */
+      transitions?: Record<string, string>;
+    };
+  };
+}
+
+/**
  * Configuration for debugging and development tools
  */
 export interface DebugConfig {
@@ -69,36 +129,10 @@ export interface DebugConfig {
    */
   exportConfig?: "json" | "yaml" | "js" | boolean | (() => string);
 
-  /** Configuration for graph visualization */
-  generateGraph?: {
-    /** Output format for the graph */
-    format: "mermaid" | "dot" | "svg";
-
-    /** Visualization options */
-    options?: {
-      /** Show transition conditions in the graph */
-      showConditions?: boolean;
-
-      /** Show transition groups as clusters */
-      groupClusters?: boolean;
-
-      /** Show state metadata */
-      showMetadata?: boolean;
-
-      /** Highlight the current state */
-      highlightCurrent?: boolean;
-
-      /** Show transition history in the graph */
-      showHistory?: boolean;
-
-      /** Custom styling for graph elements */
-      styles?: {
-        groups?: Record<string, string>;
-        states?: Record<string, string>;
-        transitions?: Record<string, string>;
-      };
-    };
-  };
+  /**
+   * Configuration for graph visualization
+   */
+  generateGraph?: GraphConfig;
 }
 
 /**

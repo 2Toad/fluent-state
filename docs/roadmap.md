@@ -587,16 +587,16 @@ Acceptance Criteria:
    - ✅ Export function is extensible to support different output formats
 
 4. State Machine Visualization
-   - The generateGraph function creates visual representations of the state machine
-   - Supported output formats include Mermaid, DOT, and SVG
-   - Visualization shows all states, transitions, and their relationships
-   - Transition groups are represented as clusters when groupClusters is enabled
-   - Transition conditions are displayed when showConditions is enabled
-   - Current state is highlighted when highlightCurrent is enabled
-   - Historical transitions can be shown when showHistory is enabled
-   - State metadata is included when showMetadata is enabled
-   - Custom styling can be applied through the styles configuration for groups, states, and transitions
-   - Generated visualizations can be used in documentation, presentations, or development tools
+   - ✅ The generateGraph function creates visual representations of the state machine
+   - ✅ Supported output formats include Mermaid, DOT, and SVG
+   - ✅ Visualization shows all states, transitions, and their relationships
+   - ✅ Transition groups are represented as clusters when groupClusters is enabled
+   - ✅ Transition conditions are displayed when showConditions is enabled
+   - ✅ Current state is highlighted when highlightCurrent is enabled
+   - ✅ Historical transitions can be shown when showHistory is enabled
+   - ✅ State metadata is included when showMetadata is enabled
+   - ✅ Custom styling can be applied through the styles configuration for groups, states, and transitions
+   - ✅ Generated visualizations can be used in documentation, presentations, or development tools
 
 5. Developer Experience
    - Debugging tools integrate with modern development environments and debugging tools

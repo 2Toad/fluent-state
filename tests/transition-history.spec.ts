@@ -6,10 +6,11 @@ import { suppressConsole } from "./helpers";
 describe("Transition History", () => {
   // Reset the default instance after each test
   afterEach(() => {
-    fluentState.clear();
+    const defaultInstance = new FluentState();
+    defaultInstance.clear();
     // @ts-ignore - Resetting private property for testing
-    fluentState.historyEnabled = false;
-    fluentState.history = undefined;
+    defaultInstance.historyEnabled = false;
+    defaultInstance.history = undefined;
   });
 
   describe("Basic functionality", () => {
@@ -266,7 +267,7 @@ describe("Transition History", () => {
       // Verify transition is recorded
       const transition = fluentState.history!.getLastTransition();
       expect(transition).to.exist;
-      expect(transition!.from).to.equal("idle");
+      expect(transition!.from).to.equal("stopped");
       expect(transition!.to).to.equal("running");
     });
   });

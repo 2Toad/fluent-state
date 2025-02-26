@@ -10,11 +10,12 @@ import {
   FluentStateOptions,
   TransitionHistoryOptions,
   StateManagerConfig,
-  AutoTransitionConfig,
-  SerializedTransitionGroup,
   DebugConfig,
   LogLevel,
   LogEntry,
+  GraphConfig,
+  SerializedTransitionGroup,
+  AutoTransitionConfig,
 } from "./types";
 import { TransitionHistory } from "./transition-history";
 import { TransitionGroup } from "./transition-group";
@@ -51,6 +52,12 @@ export class FluentState {
 
   /** Middleware functions that intercept transitions */
   private middlewares: ((prev: State | null, next: string, transition: () => void) => void | Promise<void>)[] = [];
+
+  /**
+   * Configuration for graph visualization
+   * @private
+   */
+  private _graphConfig?: DebugConfig["generateGraph"];
 
   /**
    * Creates a new FluentState instance.
@@ -128,6 +135,11 @@ export class FluentState {
     // Set up config export functionality if provided
     if (config.exportConfig) {
       this._configExportFormat = typeof config.exportConfig === "string" ? config.exportConfig : "json";
+    }
+
+    // Configure graph generation settings if provided
+    if (config.generateGraph) {
+      this._graphConfig = config.generateGraph;
     }
 
     return this;
@@ -784,8 +796,7 @@ export class FluentState {
 
     this.debug.recordMetric("contextUpdate", "afterTransition", afterDuration);
 
-    // State-specific handlers are executed last. These are defined using `when().do()` and
-    // are meant for actions that should occur specifically after entering this new state.
+    // State-specific handlers are executed last. These are defined using `when().do()`
     if (nextState.handlers.length > 0) {
       this.debug.debug(`Executing ${nextState.handlers.length} state-specific handlers for: ${nextState.name}`);
 
@@ -809,6 +820,27 @@ export class FluentState {
   }
 
   /**
+   * Generates a visual representation of the state machine.
+   *
+   * @param options - Optional configuration for the graph visualization
+   * @returns A string containing the graph representation
+   */
+  generateGraph(options?: GraphConfig): string {
+    if (!this.debug) {
+      console.warn("Debug manager is not initialized. Please call configureDebug() first.");
+      return "";
+    }
+
+    const graphOptions: GraphConfig = {
+      format: "mermaid",
+      ...this._graphConfig,
+      ...options,
+    };
+
+    return this.debug.generateGraph(graphOptions);
+  }
+
+  /**
    * Creates a new transition group with the given name.
    *
    * @param name - The unique name for the group
@@ -826,7 +858,7 @@ export class FluentState {
     // If parent group is provided, find it
     if (parentGroup) {
       if (typeof parentGroup === "string") {
-        parentGroupObj = this.group(parentGroup);
+        parentGroupObj = this.groups.get(parentGroup);
         if (!parentGroupObj) {
           throw new StateError(`Parent group "${parentGroup}" not found`);
         }
@@ -843,44 +875,6 @@ export class FluentState {
   }
 
   /**
-   * Creates a group from a serialized configuration.
-   *
-   * @param serialized - The serialized group configuration
-   * @param conditionMap - Map of transition conditions by source and target state
-   * @returns The created group
-   */
-  createGroupFromConfig(
-    serialized: SerializedTransitionGroup,
-    conditionMap: Record<string, Record<string, AutoTransitionConfig["condition"]>> = {},
-  ): TransitionGroup {
-    const fullName = serialized.namespace ? `${serialized.namespace}:${serialized.name}` : serialized.name;
-
-    if (this.groups.has(fullName)) {
-      throw new StateError(`Group with name "${fullName}" already exists`);
-    }
-
-    this.debug.debug(`Creating transition group from config: ${fullName}`);
-
-    // Create the new group, without connecting to parent yet
-    const group = new TransitionGroup(fullName, this);
-
-    // Set up the group with the serialized data
-    group.deserialize(serialized, conditionMap);
-
-    // Add to groups map first so parent lookup can find it
-    this.groups.set(fullName, group);
-
-    // Connect to parent group if specified
-    if (serialized.parentGroup && this.groups.has(serialized.parentGroup)) {
-      const parentGroup = this.groups.get(serialized.parentGroup)!;
-      group.setParent(parentGroup);
-      this.debug.debug(`Connected group ${fullName} to parent: ${serialized.parentGroup}`);
-    }
-
-    return group;
-  }
-
-  /**
    * Gets a transition group by name.
    *
    * @param name - The name of the group to retrieve
@@ -888,24 +882,6 @@ export class FluentState {
    */
   group(name: string): TransitionGroup | null {
     return this.groups.get(name) || null;
-  }
-
-  /**
-   * Removes a transition group by name.
-   *
-   * @param name - The name of the group to remove
-   * @returns True if the group was found and removed, false otherwise
-   */
-  removeGroup(name: string): boolean {
-    const group = this.groups.get(name);
-    if (!group) return false;
-
-    this.debug.debug(`Removing transition group: ${name}`);
-
-    // The parent-child relationships will be automatically cleaned up
-    // when the group is removed from the map
-
-    return this.groups.delete(name);
   }
 
   /**
@@ -918,75 +894,153 @@ export class FluentState {
   }
 
   /**
-   * Exports all groups as serialized configurations.
-   *
-   * @returns An array of serialized group configurations
+   * Removes a transition group from the state machine
+   * @param name The name of the group to remove
+   * @returns True if the group was removed, false if it doesn't exist
    */
-  exportGroups(): SerializedTransitionGroup[] {
-    this.debug.debug(`Exporting ${this.groups.size} transition groups`);
-    return this.getAllGroups().map((group) => group.serialize());
+  removeGroup(name: string): boolean {
+    if (!this.groups.has(name)) {
+      return false;
+    }
+
+    this.groups.delete(name);
+    return true;
   }
 
   /**
-   * Imports groups from serialized configurations.
-   *
-   * @param groups - The serialized group configurations
-   * @param conditionMaps - Map of condition functions for each group, indexed by group name
-   * @param options - Import options
-   * @returns This FluentState instance for chaining
+   * Creates a group from a serialized configuration
+   * @param config The serialized group configuration
+   * @param conditionMap Optional map of condition functions with various structures
+   * @returns The created transition group
+   */
+  createGroupFromConfig(config: SerializedTransitionGroup, conditionMap: Record<string, unknown> = {}): TransitionGroup {
+    const fullName = config.namespace ? `${config.namespace}:${config.name}` : config.name;
+    const group = this.createGroup(fullName);
+
+    // Set properties from serialized configuration
+    if (config.enabled === false) {
+      group.disable({ preventManualTransitions: config.preventManualTransitions || false });
+    }
+
+    // Apply additional configuration to the group
+    if (config.config) {
+      group.withConfig(config.config);
+    }
+
+    // Populate the group from the serialized configuration
+    if (config.transitions && Array.isArray(config.transitions)) {
+      for (const transition of config.transitions) {
+        // Try to find a condition function for this transition
+        let condition: ((context: unknown) => boolean) | undefined = undefined;
+
+        // Look for nested condition structure: conditionMap[groupName][fromState][toState]
+        if (conditionMap[config.name]?.[transition.from]?.[transition.to]) {
+          condition = conditionMap[config.name][transition.from][transition.to];
+        }
+        // Look for flat condition structure: conditionMap[fromState][toState]
+        else if (conditionMap[transition.from]?.[transition.to]) {
+          condition = conditionMap[transition.from][transition.to] as (context: unknown) => boolean;
+        }
+        // Also check for direct function: conditionMap[fromState]
+        else if (typeof conditionMap[transition.from] === "function") {
+          condition = conditionMap[transition.from] as (context: unknown) => boolean;
+        }
+
+        // Create a transition builder for "from" state
+        const fromBuilder = group.from(transition.from);
+
+        // Add tags if they exist
+        if (transition.tags && transition.tags.length > 0) {
+          fromBuilder.withTags(...transition.tags);
+        }
+
+        if (condition) {
+          // Create a complete transition config with the condition and any serialized properties
+          const transitionConfig: AutoTransitionConfig = {
+            condition,
+            targetState: transition.to,
+            ...(transition.config || {}),
+          };
+          fromBuilder.to(transition.to, transitionConfig);
+        } else {
+          // Create a transition without a condition but with any serialized config
+          if (transition.config) {
+            const transitionConfig: AutoTransitionConfig = {
+              condition: () => true,
+              targetState: transition.to,
+              ...transition.config,
+            };
+            fromBuilder.to(transition.to, transitionConfig);
+          } else {
+            fromBuilder.to(transition.to);
+          }
+        }
+      }
+    }
+
+    return group;
+  }
+
+  /**
+   * Exports all transition groups as serializable objects
+   * @returns Array of serialized transition groups
+   */
+  exportGroups(): SerializedTransitionGroup[] {
+    const result: SerializedTransitionGroup[] = [];
+
+    // Export each transition group
+    for (const [, group] of this.groups) {
+      result.push(group.serialize());
+    }
+
+    return result;
+  }
+
+  /**
+   * Imports transition groups from serialized configurations
+   * @param groups Array of serialized transition groups
+   * @param conditionMap Optional map of condition functions with various nested structures
+   * @param options Import options
+   * @returns The FluentState instance
    */
   importGroups(
     groups: SerializedTransitionGroup[],
-    conditionMaps: Record<string, Record<string, Record<string, AutoTransitionConfig["condition"]>>> = {},
-    options: {
-      skipExisting?: boolean;
-      replaceExisting?: boolean;
-    } = {},
-  ): FluentState {
-    this.debug.info(`Importing ${groups.length} transition groups`, options);
+    conditionMap: Record<string, unknown> = {},
+    options: { skipExisting?: boolean; replaceExisting?: boolean } = {},
+  ): this {
+    const { skipExisting = false, replaceExisting = false } = options;
 
-    // First pass: Create all groups without setting up parent-child relationships
+    // First pass: Create all groups
     const createdGroups = new Map<string, TransitionGroup>();
+    for (const groupConfig of groups) {
+      const groupName = groupConfig.name;
 
-    for (const serialized of groups) {
-      const fullName = serialized.namespace ? `${serialized.namespace}:${serialized.name}` : serialized.name;
+      // Check if the group already exists
+      if (this.groups.has(groupName)) {
+        if (skipExisting) {
+          continue;
+        }
 
-      // Skip if the group already exists and skipExisting is true
-      if (this.groups.has(fullName) && options.skipExisting) {
-        this.debug.debug(`Skipping existing group: ${fullName}`);
-        continue;
+        if (replaceExisting) {
+          this.removeGroup(groupName);
+        }
       }
 
-      // Remove existing group if replaceExisting is true
-      if (this.groups.has(fullName) && options.replaceExisting) {
-        this.debug.debug(`Replacing existing group: ${fullName}`);
-        this.removeGroup(fullName);
-      }
-
-      // Create the group
-      const group = this.createGroup(fullName);
-      const groupConditionMap = conditionMaps[fullName] || {};
-      group.deserialize(serialized, groupConditionMap);
-
-      createdGroups.set(fullName, group);
+      // Create the group from the configuration
+      const group = this.createGroupFromConfig(groupConfig, conditionMap);
+      createdGroups.set(groupName, group);
     }
 
     // Second pass: Set up parent-child relationships
-    for (const serialized of groups) {
-      const fullName = serialized.namespace ? `${serialized.namespace}:${serialized.name}` : serialized.name;
+    for (const groupConfig of groups) {
+      if (groupConfig.parentGroup && createdGroups.has(groupConfig.name)) {
+        const group = createdGroups.get(groupConfig.name);
+        const parentGroup = this.groups.get(groupConfig.parentGroup);
 
-      // Skip if the group wasn't created in the first pass
-      if (!createdGroups.has(fullName)) {
-        continue;
-      }
-
-      const group = createdGroups.get(fullName)!;
-
-      // Set parent if specified
-      if (serialized.parentGroup && createdGroups.has(serialized.parentGroup)) {
-        const parentGroup = createdGroups.get(serialized.parentGroup)!;
-        group.setParent(parentGroup);
-        this.debug.debug(`Connected group ${fullName} to parent: ${serialized.parentGroup}`);
+        if (parentGroup) {
+          // Set the parent-child relationship
+          group.setParent(parentGroup);
+        }
       }
     }
 
@@ -994,5 +1048,5 @@ export class FluentState {
   }
 }
 
+// Create and export a default instance
 export const fluentState = new FluentState();
-export default fluentState;
