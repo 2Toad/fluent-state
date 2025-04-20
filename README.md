@@ -38,9 +38,27 @@ await fluentState.next();
 
 ## Further Reading
 
-- [API](./docs/api.md)
-- Fluent State is a non-hierarchial state machine. For more information on its architecture and how it operates, please refer to the [State Machine](./docs/state-machine.md) documentation.
-- Fluent State has a flexible plugin architecture. See the [Plugins](./docs/plugins.md) documentation for more details.
+### Core Concepts
+- [API Reference](./docs/api.md) - Complete API documentation
+- [State Machine Architecture](./docs/state-machine.md) - Learn about Fluent State's non-hierarchical state machine design
+
+### Key Features
+- [Auto-Transitions](./docs/auto-transitions.md) - Automatic state transitions based on conditions
+- [Batch Updates](./docs/batch-update.md) - Optimize performance with batched context changes
+- [Transition Groups](./docs/transition-groups.md) - Organize and manage transitions collectively
+- [State Manager](./docs/state-manager.md) - Performance optimizations for state management
+
+### Debugging & Monitoring
+- [Debugging Support](./docs/debugging-support.md) - General debugging features
+- [Logging and Monitoring](./docs/logging-and-monitoring.md) - Track state machine behavior
+- [Transition History](./docs/transition-history.md) - Record and analyze state transitions
+- [Time Travel Debugging](./docs/time-travel-debugging.md) - Step through historical states
+- [State Machine Visualization](./docs/state-machine-visualization.md) - Generate visual diagrams
+
+### Extension
+- [Plugins](./docs/plugins.md) - Extend functionality with plugins
+- [Contributing](./docs/contribute.md) - Guidelines for contributors
+- [Roadmap](./docs/roadmap.md) - Upcoming features and improvements
 
 ## Contributing 🤝
 
