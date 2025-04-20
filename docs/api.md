@@ -282,3 +282,97 @@ fluentState
   ```ts
   (previousState: State, currentState: State) => void | Promise<void>
   ```
+
+## Context Management
+
+### updateContext
+
+The `updateContext` method allows you to update the context of the current state.
+
+```typescript
+// Basic context update
+machine.currentState.updateContext({ counter: 42 });
+```
+
+### getContext
+
+The `getContext` method returns the current context of the state.
+
+```typescript
+const context = machine.currentState.getContext();
+```
+
+### batchUpdate
+
+The `batchUpdate` method allows you to perform multiple context updates in a single operation, with control over when auto-transitions are evaluated.
+
+```typescript
+// Basic batch update
+await machine.currentState.batchUpdate([
+  { counter: 1 },
+  { status: 'processing' },
+  { progress: 0.5 }
+]);
+
+// Atomic batch update with evaluation after completion
+try {
+  const success = await machine.currentState.batchUpdate(
+    [
+      { step1: 'complete' },
+      { step2: 'complete' },
+      { step3: 'complete' }
+    ],
+    {
+      evaluateAfterComplete: true,
+      atomic: true
+    }
+  );
+  
+  if (success) {
+    console.log('All steps completed successfully');
+  }
+} catch (error) {
+  console.error('Failed to complete all steps:', error);
+  // Error details include index and specific update that failed
+  console.error(`Failed at update index: ${error.index}`, error.update);
+}
+```
+
+#### Options
+
+- `evaluateAfterComplete` (boolean): When true, auto-transitions are only evaluated after all updates are applied. Default is false.
+- `atomic` (boolean): When true, the entire batch fails if any single update fails, and previous updates are reverted. Default is false.
+
+#### Return Value
+
+Returns a Promise that resolves to:
+- `true` if all updates were successful (when atomic is true)
+- `true` if at least one update was successful (when atomic is false)
+- `false` if all updates failed or an error occurred
+
+#### Error Handling
+
+When an update fails during batch processing:
+
+- In atomic mode: The operation throws an error containing details about which update failed, and all previous updates are reverted.
+- In non-atomic mode: The error is logged, but processing continues with subsequent updates. The method returns `true` if at least one update succeeded.
+
+#### Integration with Other Features
+
+- **Debounced Transitions**: Batch updates correctly manage debounced transitions, ensuring they are properly canceled when reverting failed atomic updates.
+- **Transition Groups**: Batch updates respect transition group configurations, including priorities and enabled/disabled state.
+- **Performance Metrics**: When debug features are enabled, detailed performance metrics are collected for batch updates.
+
+### batchUpdateFluid
+
+The `batchUpdateFluid` method is a fluent version of `batchUpdate` that allows for method chaining. It does not wait for the updates to complete before returning.
+
+```typescript
+// Method chaining with batchUpdateFluid
+machine.currentState
+  .batchUpdateFluid([
+    { step: 1 },
+    { status: 'inProgress' }
+  ])
+  .onExit(() => console.log('Exiting state'));
+```

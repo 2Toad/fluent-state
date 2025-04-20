@@ -455,7 +455,21 @@ export class TransitionGroup {
    * @returns True if the transition exists in this group
    */
   hasTransition(fromState: string, toState: string): boolean {
-    return this.transitions.has(fromState) && this.transitions.get(fromState)!.has(toState);
+    const transitions = this.transitions.get(fromState);
+    return transitions ? transitions.has(toState) : false;
+  }
+
+  /**
+   * Checks if this group has any transitions from the given state.
+   *
+   * @param fromState - The source state name to check
+   * @returns True if the group has any transitions from this state
+   */
+  hasTransitionsFromState(fromState: string): boolean {
+    // Check if the transitions map has the fromState as a key
+    // and if it has any transitions defined
+    const transitions = this.transitions.get(fromState);
+    return !!transitions && transitions.size > 0;
   }
 
   /**
