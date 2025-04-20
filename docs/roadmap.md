@@ -213,6 +213,71 @@ Benefits:
 - More predictable transition behavior
 - Optimized for different use cases
 
+User Story:
+As a developer working with complex state machines in FluentState,
+I want fine-grained control over when auto-transitions are evaluated,
+So that I can optimize performance, reduce unnecessary evaluations, and create more predictable state transition behavior.
+
+Acceptance Criteria:
+
+1. Property-based Evaluation Triggering
+   - Transitions with `watchProperties` defined are only evaluated when those specific properties change
+   - Support for deep property paths using dot notation (e.g., 'user.profile.name')
+   - Support for array notation for indexed properties (e.g., 'items[0].status')
+   - Proper handling of property additions/deletions, not just value changes
+   - Performance improvement when many properties exist but only few trigger transitions
+
+2. Conditional Evaluation Skipping
+   - When `skipIf` returns true, auto-transition evaluation is completely bypassed
+   - The `skipIf` function receives the full context object for decision making
+   - Skip conditions are evaluated before any transition conditions to avoid unnecessary work
+   - Skip conditions do not affect manual transitions, only auto-transitions
+   - Support for multiple skip conditions with composable functions
+
+3. Evaluation Timing Strategies
+   - 'immediate' strategy evaluates transitions synchronously after context changes (default)
+   - 'nextTick' strategy defers evaluation to the next event loop tick
+   - 'idle' strategy uses requestIdleCallback (or polyfill) to evaluate during idle periods
+   - Strategy selection affects all transitions or can be configured per transition/group
+   - Appropriate fallbacks for environments without certain timing capabilities
+
+4. Integration with Existing Features
+   - Compatible with transition priorities from Enhanced Auto-transition Configuration
+   - Works correctly with debounce settings and properly combines timing effects
+   - Integrates with transition groups for group-level evaluation configuration
+   - Evaluation strategies properly reflected in transition history
+   - Evaluation control properly respects batch update configurations
+
+Example Usage:
+```typescript
+// Only evaluate when specific properties change
+fs.from("form")
+  .to<FormState>("valid", {
+    condition: (_, form) => form.isValid,
+    evaluationConfig: {
+      watchProperties: ['values.email', 'values.password']
+    }
+  });
+
+// Skip evaluation based on application state
+fs.from("idle")
+  .to<AppState>("loading", {
+    condition: (_, state) => state.hasQueuedActions,
+    evaluationConfig: {
+      skipIf: (state) => state.isOffline || state.isBatteryLow
+    }
+  });
+
+// Use idle time for non-critical transitions
+fs.from("data")
+  .to<DataState>("analyzed", {
+    condition: (_, data) => data.needsAnalysis,
+    evaluationConfig: {
+      evaluationStrategy: 'idle'  // Process during browser idle time
+    }
+  });
+```
+
 ## ✅ 5. Transition Groups
 Dependencies:
 - Enhanced Auto-transition Configuration (for group-level configuration inheritance)
