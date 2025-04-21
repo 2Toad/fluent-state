@@ -16,8 +16,8 @@
     "lint": "oxlint --fix",
     "lint:ci": "oxlint",
     "format": "prettier . --write",
-    "prepublishOnly": "npm run lint && npm test && npm run build",
-    "prepare": "husky"
+    "prepublishOnly": "npm run lint:ci && npm test && npm run build",
+    "postinstall": "husky"
   },
   "repository": {
     "type": "git",
