@@ -68,7 +68,8 @@ export class State {
    * If the target state doesn't exist, it will be created.
    *
    * @param name - The name of the target state to transition to.
-   * @param config - Optional auto-transition configuration or condition function
+   * @param config - Optional. Either an auto-transition condition function `(state: State, context: TContext) => boolean | Promise<boolean>`
+   *                 or an `AutoTransitionConfig` object containing the condition, target state, and other options.
    * @returns A Transition object that can be used to chain additional state configurations.
    */
   to<TContext>(name: string, config?: AutoTransitionConfig<TContext> | AutoTransition<TContext>): Transition {
@@ -799,7 +800,10 @@ export class State {
    * @returns The property value or undefined if not found
    */
   private getPropertyValue(obj: unknown, path: string): unknown {
-    if (!obj) return undefined;
+    if (!obj || typeof obj !== "object") return undefined;
+
+    // Define regex for matching array indices like '[0]', '[123]'
+    const arrayIndexRegex = /\[([0-9]+)\]/g;
 
     // Use cached path parts if available
     let parts: string[];
@@ -812,7 +816,7 @@ export class State {
         if (part.includes("[") && part.includes("]")) {
           const bracketIndex = part.indexOf("[");
           const propertyName = part.substring(0, bracketIndex);
-          const indexMatches = part.match(/\[([0-9]+)\]/g);
+          const indexMatches = part.match(arrayIndexRegex);
 
           if (indexMatches) {
             acc.push(propertyName);
