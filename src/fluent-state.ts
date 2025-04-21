@@ -983,7 +983,7 @@ export class FluentState {
           const transitionConfig: AutoTransitionConfig = {
             condition,
             targetState: transition.to,
-            ...(transition.config || {}),
+            ...transition.config,
           };
           fromBuilder.to(transition.to, transitionConfig);
         } else {

@@ -35,7 +35,7 @@ describe("Transition Guard", () => {
   });
 
   it("should block transitions when proceed is not called", async () => {
-    const middleware = createTransitionGuard((currentState, nextStateName, proceed) => {
+    const middleware = createTransitionGuard(() => {
       // Do not call proceed
     });
 
@@ -127,7 +127,7 @@ describe("Middleware Edge Cases", () => {
     };
 
     // Create an async middleware that simulates an async operation
-    const middleware = createTransitionGuard(async (currentState, nextStateName, proceed) => {
+    const middleware = createTransitionGuard(async (_currentState, _nextStateName, proceed) => {
       addToOrder("middleware start");
 
       // Simulate async operation

@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { FluentState, TransitionHistory, TransitionHistoryOptions, SerializationOptions } from "../src";
+import { FluentState, TransitionHistory } from "../src";
 import { fluentState } from "../src/fluent-state";
 import { suppressConsole } from "./helpers";
 
@@ -493,7 +493,7 @@ describe("Transition History", () => {
       expect(parsed1[0].context.filtered).to.equal("default");
 
       // Now create a custom filter function to use for export
-      const customFilterFn = (entry: any) => {
+      const customFilterFn = () => {
         // We're testing the filter functionality works to filter entries
         // Always return false to filter out all entries
         return false;
@@ -604,7 +604,7 @@ describe("Transition History", () => {
 
     it("should handle invalid JSON gracefully", () => {
       // Suppress console errors for this test since we expect an error
-      const { flags, restore } = suppressConsole({ suppressError: true });
+      const { restore } = suppressConsole({ suppressError: true });
 
       // Create a history instance for testing
       const importedHistory = new TransitionHistory();

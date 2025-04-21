@@ -27,7 +27,7 @@ describe("Group-Level Middleware", () => {
   });
 
   it("should allow transitions when middleware calls proceed", async () => {
-    const middlewareSpy = sinon.spy((from, to, proceed) => {
+    const middlewareSpy = sinon.spy((_from, _to, proceed) => {
       proceed();
     });
 
@@ -57,8 +57,9 @@ describe("Group-Level Middleware", () => {
 
   it("should pass context to middleware", async () => {
     const context = { userId: "123", isPremium: true };
-    const middlewareSpy = sinon.spy((from, to, proceed, ctx) => {
+    const middlewareSpy = sinon.spy((_from, _to, proceed, ctx) => {
       proceed();
+      expect(ctx).to.equal(context);
     });
 
     group.middleware(middlewareSpy);
@@ -91,12 +92,12 @@ describe("Group-Level Middleware", () => {
   it("should support multiple middleware in correct order", async () => {
     const order: string[] = [];
 
-    group.middleware((from, to, proceed) => {
+    group.middleware((_from, _to, proceed) => {
       order.push("first");
       proceed();
     });
 
-    group.middleware((from, to, proceed) => {
+    group.middleware((_from, _to, proceed) => {
       order.push("second");
       proceed();
     });
@@ -107,11 +108,11 @@ describe("Group-Level Middleware", () => {
   });
 
   it("should stop evaluating middleware if one blocks the transition", async () => {
-    const secondMiddleware = sinon.spy((from, to, proceed) => {
+    const secondMiddleware = sinon.spy((_from, _to, proceed) => {
       proceed();
     });
 
-    group.middleware((from, to, proceed) => {
+    group.middleware(() => {
       // First middleware blocks
     });
 
@@ -125,7 +126,7 @@ describe("Group-Level Middleware", () => {
   });
 
   it("should allow removing middleware", async () => {
-    const middleware = sinon.spy((from, to, proceed) => {
+    const middleware = sinon.spy((_from, _to, proceed) => {
       proceed();
     });
 
@@ -138,11 +139,11 @@ describe("Group-Level Middleware", () => {
   });
 
   it("should work alongside global middleware", async () => {
-    const globalMiddleware = sinon.spy((state, next, proceed) => {
+    const globalMiddleware = sinon.spy((_state, _next, proceed) => {
       proceed();
     });
 
-    const groupMiddleware = sinon.spy((from, to, proceed) => {
+    const groupMiddleware = sinon.spy((_from, _to, proceed) => {
       proceed();
     });
 
@@ -160,11 +161,11 @@ describe("Group-Level Middleware", () => {
     const otherGroup = fs.createGroup("other");
     otherGroup.from("stopped").to("completed");
 
-    const mainMiddleware = sinon.spy((from, to, proceed) => {
+    const mainMiddleware = sinon.spy((_from, _to, proceed) => {
       proceed();
     });
 
-    const otherMiddleware = sinon.spy((from, to, proceed) => {
+    const otherMiddleware = sinon.spy((_from, _to, proceed) => {
       proceed();
     });
 
@@ -178,7 +179,7 @@ describe("Group-Level Middleware", () => {
   });
 
   it("should support asynchronous middleware", async () => {
-    const middlewareSpy = sinon.spy(async (from, to, proceed) => {
+    const middlewareSpy = sinon.spy(async (_from, _to, proceed) => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       proceed();
     });
@@ -201,7 +202,7 @@ describe("Group-Level Middleware", () => {
 
     const context: TestContext = { count: 0 };
 
-    group.middleware((from, to, proceed, ctx) => {
+    group.middleware((from, _to, proceed, ctx) => {
       if (ctx) {
         (ctx as TestContext).count++;
         (ctx as TestContext).fromState = from;

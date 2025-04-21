@@ -11,7 +11,7 @@ Thank you for wanting to contribute to the Fluent State project. With your contr
    1. Always branch off of `main`, which contains the latest version of Fluent State
 3. [Pull Request](https://github.com/2Toad/fluent-state/pulls) (PR):
    1. Make sure you run the following scripts in local, and that all of them pass, before submitting a PR:
-      1. `npm run lint:fix`
+      1. `npm run lint`
       2. `npm run format`
       3. `npm test`
    2. Make sure your PR is targeting the correct branch (see Step 2.i)
@@ -37,8 +37,7 @@ Start app in watch mode: `npm run local`
 
 #### Linting
 
-- Check lint rules: `npm run lint`
-- Fix lint errors: `npm run lint:fix`
+- Fix lint errors: `npm run lint`
 - Fix formatting errors: `npm run format`
 
 ## Appendix

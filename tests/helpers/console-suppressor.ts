@@ -68,7 +68,7 @@ export function suppressConsole(options: ConsoleSuppressorOptions = {}): Console
 
   // Replace console functions
   if (suppressError) {
-    console.error = (...args) => {
+    console.error = () => {
       if (trackErrors) {
         flags.errorLogged = true;
       }
@@ -76,7 +76,7 @@ export function suppressConsole(options: ConsoleSuppressorOptions = {}): Console
   }
 
   if (suppressLog) {
-    console.log = (...args) => {
+    console.log = () => {
       if (trackErrors) {
         flags.logLogged = true;
       }
@@ -84,7 +84,7 @@ export function suppressConsole(options: ConsoleSuppressorOptions = {}): Console
   }
 
   if (suppressWarn) {
-    console.warn = (...args) => {
+    console.warn = () => {
       if (trackErrors) {
         flags.warnLogged = true;
       }

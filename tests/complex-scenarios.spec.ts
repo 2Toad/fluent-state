@@ -2,12 +2,6 @@ import { expect } from "chai";
 import { FluentState } from "../src";
 import { Lifecycle } from "../src/types";
 
-function setupBasicStateMachine(fs: FluentState) {
-  // prettier-ignore
-  fs.from("vegetable").to("diced").or("pickled")
-    .from("diced").to("salad").or("trash");
-}
-
 describe("Complex Scenarios", () => {
   let fs: FluentState;
 

@@ -1,6 +1,5 @@
 import { expect } from "chai";
 import { FluentState } from "../src/fluent-state";
-import { StateWarning } from "../src/types";
 
 describe("Warning System", () => {
   describe("Basic warning detection", () => {

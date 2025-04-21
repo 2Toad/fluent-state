@@ -1,7 +1,5 @@
 import { expect } from "chai";
 import { FluentState } from "../src/fluent-state";
-import { TimeTravel } from "../src/time-travel";
-import { TimeSnapshot } from "../src/types";
 
 describe("Time Travel Debugging", () => {
   let fluentState: FluentState;
