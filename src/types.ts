@@ -248,6 +248,32 @@ export type FluentStatePlugin =
   | { install: (fluentState: FluentState) => void };
 
 /**
+ * Configuration for controlling when and how auto-transitions are evaluated
+ */
+export interface AutoTransitionEvaluationConfig {
+  /**
+   * Only evaluate when these context properties change
+   * Can use dot notation for deep properties (e.g., 'user.profile.name')
+   * Can use array notation for indexed properties (e.g., 'items[0].status')
+   */
+  watchProperties?: string[];
+
+  /**
+   * Skip evaluation if these conditions are met
+   * Function receives the full context object for decision making
+   */
+  skipIf?: (context: unknown) => boolean;
+
+  /**
+   * Custom evaluation timing strategy
+   * - 'immediate': Evaluate transitions synchronously after context changes (default)
+   * - 'nextTick': Defer evaluation to the next event loop tick
+   * - 'idle': Use requestIdleCallback (or polyfill) to evaluate during idle periods
+   */
+  evaluationStrategy?: "immediate" | "nextTick" | "idle";
+}
+
+/**
  * Configuration for an auto-transition.
  *
  * @template TContext - The type of context object used in the condition function.
@@ -263,6 +289,10 @@ export interface AutoTransitionConfig<TContext = unknown> {
     delay: number;
   };
   groupName?: string; // The name of the group this transition belongs to
+  /**
+   * Configuration for controlling when this auto-transition is evaluated
+   */
+  evaluationConfig?: AutoTransitionEvaluationConfig;
 }
 
 /**

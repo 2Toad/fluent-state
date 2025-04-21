@@ -12,7 +12,7 @@ describe("Debugging Integration Tests", () => {
     clock = sinon.useFakeTimers();
     fluentState = new FluentState({
       debug: {
-        logLevel: "debug",
+        logLevel: "warn",
         measurePerformance: true,
       },
     });
@@ -68,7 +68,7 @@ describe("Debugging Integration Tests", () => {
       // Note: We don't reinitialize the fake timers here since they're already set up in the outer beforeEach
       fluentState = new FluentState({
         debug: {
-          logLevel: "debug",
+          logLevel: "warn",
           measurePerformance: true,
         },
       });
@@ -229,7 +229,7 @@ describe("Debugging Integration Tests", () => {
     beforeEach(() => {
       fluentState = new FluentState({
         debug: {
-          logLevel: "debug",
+          logLevel: "warn",
           measurePerformance: true,
         },
       });
@@ -348,7 +348,7 @@ describe("Debugging Integration Tests", () => {
       // Reset the fluentState instance with correct debug config
       fluentState = new FluentState({
         debug: {
-          logLevel: "debug",
+          logLevel: "warn",
           measurePerformance: true,
         },
       });
@@ -392,7 +392,7 @@ describe("Debugging Integration Tests", () => {
       // Reset the fluentState instance with debug config
       fluentState = new FluentState({
         debug: {
-          logLevel: "debug",
+          logLevel: "warn",
           measurePerformance: true,
         },
       });

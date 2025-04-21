@@ -474,6 +474,254 @@ networkState.updateContext({ status: "connected" }); // Timer starts again
    });
    ```
 
+### Conditional Auto-transition Evaluation
+
+The Conditional Auto-transition Evaluation feature gives you fine-grained control over when and how auto-transitions are evaluated. This is particularly useful for optimizing performance, creating more predictable behavior, and managing complex state machines.
+
+```typescript
+interface AutoTransitionEvaluationConfig {
+  // Only evaluate when these context properties change
+  watchProperties?: string[];
+  // Skip evaluation if these conditions are met
+  skipIf?: (context: unknown) => boolean;
+  // Custom evaluation timing
+  evaluationStrategy?: 'immediate' | 'nextTick' | 'idle';
+}
+```
+
+To use evaluation configuration, add it to your transition using the `evaluationConfig` property:
+
+```typescript
+fs.from("form")
+  .to<FormState>("valid", {
+    condition: (_, ctx) => ctx.isValid,
+    targetState: "valid",
+    evaluationConfig: {
+      watchProperties: ['values.email', 'values.password'],
+      skipIf: (ctx) => ctx.isOffline,
+      evaluationStrategy: 'nextTick'
+    }
+  });
+```
+
+Alternatively, you can use the fluent API's `withEvaluationConfig` method:
+
+```typescript
+fs.from("form")
+  .to<FormState>("valid", (_, ctx) => ctx.isValid)
+  .withEvaluationConfig({
+    watchProperties: ['values.email', 'values.password']
+  });
+```
+
+#### Property-based Evaluation Triggering
+
+The `watchProperties` option allows you to specify which context properties should trigger evaluation when they change. This significantly improves performance by avoiding unnecessary evaluations.
+
+```typescript
+fs.from("form")
+  .to<FormState>("valid", {
+    condition: (_, form) => form.isValid,
+    targetState: "valid",
+    evaluationConfig: {
+      watchProperties: ['values.email', 'values.password']
+    }
+  });
+```
+
+Key features:
+
+1. **Dot Notation Support**: Access deep properties using dot notation: `'user.profile.name'`
+2. **Array Notation Support**: Access array elements: `'items[0].status'`
+3. **Performance Improvements**: Only evaluates when specified properties change, not on every context update
+4. **Property Tracking**: Properly detects property additions and deletions, not just value changes
+
+Example:
+
+```typescript
+// This transition will only be evaluated when email or password changes
+fs.from("editing")
+  .to<FormState>("validating", {
+    condition: (_, context) => {
+      return Boolean(context.values.email && context.values.password);
+    },
+    targetState: "validating",
+    evaluationConfig: {
+      watchProperties: ['values.email', 'values.password']
+    }
+  });
+
+// This will not trigger evaluation because 'unrelated' is not in watchProperties
+await fs.state.updateContext({ unrelated: "new data" });
+
+// This will trigger evaluation because 'values.email' is in watchProperties
+await fs.state.updateContext({ values: { email: "user@example.com" } });
+```
+
+#### Conditional Evaluation Skipping
+
+The `skipIf` option lets you completely bypass evaluation when certain conditions are met. This is useful for avoiding unnecessary processing or preventing transitions based on system state.
+
+```typescript
+fs.from("idle")
+  .to<AppState>("loading", {
+    condition: (_, state) => state.hasQueuedActions,
+    targetState: "loading",
+    evaluationConfig: {
+      skipIf: (state) => state.isOffline || state.isBatteryLow
+    }
+  });
+```
+
+Key features:
+
+1. **Early Exit**: Skip conditions are evaluated before any transition conditions to avoid unnecessary work
+2. **Full Context Access**: The skipIf function receives the full context object for decision making
+3. **Manual Override**: Skip conditions only affect auto-transitions, not manual transitions
+4. **Performance Optimization**: Completely bypasses the condition function when the skip condition is met
+
+Example:
+
+```typescript
+// Skip validation when offline
+fs.from("validating")
+  .to<FormState>("valid", {
+    condition: (_, context) => {
+      // Complex and expensive validation
+      return validateAllFields(context);
+    },
+    targetState: "valid", 
+    evaluationConfig: {
+      skipIf: (context) => (context as FormState).isOffline
+    }
+  });
+
+// This will not trigger validation because we're offline
+await fs.state.updateContext({ isOffline: true, values: { ... } });
+
+// Manual transitions still work even with skipIf
+await fs.transition("valid"); // This will succeed
+```
+
+#### Evaluation Timing Strategies
+
+The `evaluationStrategy` option gives you control over when transitions are evaluated, with three strategies available:
+
+1. **`'immediate'`**: The default; evaluates transitions synchronously after context changes
+2. **`'nextTick'`**: Defers evaluation to the next event loop tick
+3. **`'idle'`**: Uses requestIdleCallback (or a polyfill) to evaluate during browser idle periods
+
+```typescript
+fs.from("form")
+  .to<FormState>("submitting", {
+    condition: (_, ctx) => ctx.isSubmitting,
+    targetState: "submitting",
+    evaluationConfig: {
+      evaluationStrategy: 'nextTick' // Defer to next tick
+    }
+  });
+```
+
+Key benefits:
+
+1. **Responsive UI**: Defer processing-heavy transitions to avoid blocking the main thread
+2. **Prioritization**: Critical transitions can use 'immediate', while non-critical ones use 'idle'
+3. **Batching**: 'nextTick' allows UI updates to complete before transitions are evaluated
+4. **Resource Optimization**: 'idle' helps utilize spare CPU cycles during browser idle time
+
+Example:
+
+```typescript
+// Use nextTick for better UI responsiveness
+fs.from("valid")
+  .to<FormState>("submitting", {
+    condition: (_, context) => context.isSubmitting,
+    targetState: "submitting",
+    evaluationConfig: {
+      evaluationStrategy: "nextTick"
+    }
+  });
+
+// Use idle time for non-critical operations
+fs.from("submitting")
+  .to<FormState>("success", {
+    condition: async (_, context) => {
+      // Long-running operation
+      return await submitForm(context);
+    },
+    targetState: "success",
+    evaluationConfig: {
+      evaluationStrategy: "idle"
+    }
+  });
+```
+
+#### Integration with Other Features
+
+Conditional evaluation works seamlessly with other FluentState features:
+
+##### With Debounce
+
+```typescript
+fs.from("search")
+  .to<SearchState>("searching", {
+    condition: (_, ctx) => ctx.query.length >= 3,
+    targetState: "searching",
+    debounce: 300, // Wait 300ms after last keystroke
+    evaluationConfig: {
+      watchProperties: ['query'] // Only evaluate when query changes
+    }
+  });
+```
+
+##### With Priority
+
+```typescript
+fs.from("form")
+  .to<FormState>("error", {
+    condition: (_, ctx) => ctx.hasError,
+    targetState: "error",
+    priority: 3, // Highest priority
+    evaluationConfig: {
+      // Evaluate immediately for error conditions
+      evaluationStrategy: 'immediate'
+    }
+  })
+  .or<FormState>("success", {
+    condition: (_, ctx) => ctx.isValid,
+    targetState: "success",
+    priority: 2,
+    evaluationConfig: {
+      // Can use idle time for success path
+      evaluationStrategy: 'idle'
+    }
+  });
+```
+
+##### With Transition Groups
+
+```typescript
+const formGroup = fs.createGroup("form");
+
+formGroup.withConfig({
+  // Group-level evaluation config applies to all transitions in the group
+  evaluationConfig: {
+    skipIf: (ctx) => (ctx as FormState).isDisabled
+  }
+});
+
+// Individual transitions can override or extend the group config
+formGroup.from("editing")
+  .to("valid", {
+    condition: (_, ctx) => ctx.isValid,
+    targetState: "valid",
+    evaluationConfig: {
+      watchProperties: ['values.email', 'values.password']
+      // Inherits skipIf from group config
+    }
+  });
+```
+
 ### Best Practices for Auto-transition Configuration
 
 1. **Priority Scale**
