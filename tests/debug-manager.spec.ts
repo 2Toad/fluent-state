@@ -543,7 +543,7 @@ describe("DebugManager", () => {
 
     it("should handle custom redaction function", () => {
       // Custom redaction function that redacts user property
-      const customRedact = (key: string, value: unknown) => key === "user";
+      const customRedact = (key: string) => key === "user";
 
       const config = debugManager.exportConfig({
         includeHistory: true,

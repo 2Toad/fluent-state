@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import * as sinon from "sinon";
-import { FluentState, State, Lifecycle } from "../src";
+import { FluentState, State } from "../src";
 
 describe("State Lifecycle Events", () => {
   let fs: FluentState;

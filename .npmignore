@@ -3,12 +3,10 @@
 src/
 tests/
 .editorconfig
-.eslintcache
-.eslintignore
-.eslintrc.json
 .gitattributes
 .gitignore
 .nvmrc
+.oxlintrc.json
 .prettierignore
 .prettierrc.json
 tsconfig.json

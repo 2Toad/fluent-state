@@ -13,8 +13,8 @@
     "local": "npm run clean && nodemon src/index.ts",
     "test": "mocha -r ts-node/register tests/**/*.spec.ts",
     "test:watch": "mocha -r ts-node/register --watch --watch-files tests --watch-extensions ts 'tests/**/*.spec.ts'",
-    "lint": "eslint . --cache",
-    "lint:fix": "eslint . --fix",
+    "lint": "oxlint --fix",
+    "lint:ci": "oxlint",
     "format": "prettier . --write",
     "prepublishOnly": "npm run lint && npm test && npm run build",
     "prepare": "husky"
@@ -27,41 +27,31 @@
     "state machine"
   ],
   "devDependencies": {
-    "@eslint/js": "^9.9.1",
     "@types/chai": "^4.3.19",
     "@types/chai-spies": "^1.0.6",
-    "@types/eslint__js": "^8.42.3",
-    "@types/eslint-config-prettier": "^6.11.3",
-    "@types/eslint-plugin-security": "^3.0.0",
     "@types/mocha": "^10.0.7",
     "@types/node": "^22.5.2",
     "@types/sinon": "^17.0.3",
-    "@typescript-eslint/eslint-plugin": "^8.4.0",
-    "@typescript-eslint/parser": "^8.4.0",
     "chai": "^4.5.0",
     "chai-spies": "^1.1.0",
-    "eslint": "^9.9.1",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.2.1",
-    "eslint-plugin-security": "^3.0.1",
     "globals": "^15.9.0",
     "husky": "^9.1.5",
     "lint-staged": "^15.2.10",
     "mocha": "^10.7.3",
     "nodemon": "^3.1.4",
+    "oxlint": "^0.16.7",
     "prettier": "^3.3.3",
     "rimraf": "^6.0.1",
     "sinon": "^19.0.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.4",
-    "typescript-eslint": "^8.4.0"
+    "typescript": "^5.5.4"
   },
   "overrides": {
     "inflight": "^2.0.0",
     "glob": "^9.0.0"
   },
   "lint-staged": {
-    "*.ts": "eslint --cache --fix",
+    "*.ts": "oxlint --fix",
     "*": "prettier --write"
   }
 }

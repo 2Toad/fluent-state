@@ -76,18 +76,10 @@ export class DebugManager {
       }
 
       // Validate after transitions
-      this.fluentState.observer.add(
-        Lifecycle.AfterTransition,
-        (
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          _prevState,
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          _currentState,
-        ) => {
-          this.validateAndLogWarnings(config.validateOptions);
-          return;
-        },
-      );
+      this.fluentState.observer.add(Lifecycle.AfterTransition, () => {
+        this.validateAndLogWarnings(config.validateOptions);
+        return;
+      });
     }
 
     return this;
@@ -105,25 +97,17 @@ export class DebugManager {
     this.validateAndLogWarnings(options);
 
     // Use the transition lifecycle to also check for new states
-    this.fluentState.observer.add(
-      Lifecycle.AfterTransition,
-      (
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        _prevState,
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        _currentState,
-      ) => {
-        const currentStateCount = this.fluentState.states.size;
+    this.fluentState.observer.add(Lifecycle.AfterTransition, () => {
+      const currentStateCount = this.fluentState.states.size;
 
-        if (currentStateCount > lastStateCount) {
-          // New states have been added
-          this.validateAndLogWarnings(options);
-          lastStateCount = currentStateCount;
-        }
+      if (currentStateCount > lastStateCount) {
+        // New states have been added
+        this.validateAndLogWarnings(options);
+        lastStateCount = currentStateCount;
+      }
 
-        return;
-      },
-    );
+      return;
+    });
 
     // Also check when states are added directly
     const originalAddState = this.fluentState._addState;
@@ -1301,7 +1285,6 @@ ${indentStr}enableHistory: true`;
 
     return privateState._autoTransitions.map((autoTransition) => {
       // We're explicitly excluding the condition function as it can't be serialized
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { condition: _, ...rest } = autoTransition;
       return {
         ...rest,
@@ -1552,8 +1535,7 @@ ${indentStr}enableHistory: true`;
             // Fallback to direct property access if available
             entries = (history as unknown as { entries: TransitionHistoryEntry[] }).entries;
           }
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (_) {
+        } catch {
           // Silently handle any errors
         }
 
@@ -1699,8 +1681,7 @@ ${indentStr}enableHistory: true`;
             // Fallback to direct property access if available
             entries = (history as unknown as { entries: TransitionHistoryEntry[] }).entries;
           }
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (_) {
+        } catch {
           // Silently handle any errors
         }
 

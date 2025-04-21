@@ -28,7 +28,6 @@ describe("Retry Configuration", () => {
 
     // Mock console methods
     const logStub = sinon.stub(console, "log");
-    const errorStub = sinon.stub(console, "error");
 
     // Track number of attempts
     let attempts = 0;

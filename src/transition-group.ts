@@ -792,8 +792,7 @@ export class TransitionGroup {
     this.transitions.forEach((toMap, fromState) => {
       toMap.forEach((config, toState) => {
         // Omit the condition function from serialized output
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { condition, ...serializableConfig } = config;
+        const { condition: _, ...serializableConfig } = config;
 
         serializedTransitions.push({
           from: fromState,

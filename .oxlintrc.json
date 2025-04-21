@@ -1,0 +1,16 @@
+{
+  "files": ["**/*.{ts,js}"],
+  "ignore": [".husky", "dist", "node_modules"],
+  "rules": {
+    "correctness": {
+      "no-unused-vars": "error",
+      "no-explicit-any": "warn",
+      "no-use-before-define": {
+        "functions": false,
+        "variables": true,
+        "classes": true,
+        "allowNamedExports": true
+      }
+    }
+  }
+}

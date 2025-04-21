@@ -3,7 +3,6 @@ import * as chai from "chai";
 import * as spies from "chai-spies";
 import * as sinon from "sinon";
 import { FluentState } from "../src/fluent-state";
-import { AutoTransitionConfig } from "../src/types";
 import { State } from "../src/state";
 
 chai.use(spies);
@@ -176,7 +175,7 @@ describe("Batch Updates", () => {
     });
 
     // Mock evaluateAutoTransitions to capture the evaluation order
-    const evalSpy = sinon.stub(realFs.state, "evaluateAutoTransitions").callsFake(async () => {
+    sinon.stub(realFs.state, "evaluateAutoTransitions").callsFake(async () => {
       // Simulate the transition evaluation without actually changing state
       const transitions = [
         { condition: highPriorityStub, targetState: "high", priority: 2 },
@@ -258,7 +257,7 @@ describe("Batch Updates", () => {
     });
 
     // Spy to verify cancellation of debounced transitions
-    const cancelSpy = chai.spy.on(machine.state, "clearAllDebounceTimers");
+    chai.spy.on(machine.state, "clearAllDebounceTimers");
 
     // Add states
     machine.from("idle");
@@ -375,9 +374,6 @@ describe("Batch Updates", () => {
     // Reset stubs to avoid conflicts
     sinon.restore();
 
-    // Test flag to track if update was processed
-    let customUpdateProcessed = false;
-
     // Create a state machine with a custom context handler
     const customFs = new FluentState({
       initialState: "initial",
@@ -432,13 +428,6 @@ describe("Batch Updates", () => {
 
     // Execute a batch update with the group disabled first
     group.disable();
-
-    // Instead of testing a real transition, we'll use a stub to ensure expected behavior
-    const batchUpdateOriginal = groupFs.state.batchUpdate;
-    const batchUpdateStub = sinon.stub(groupFs.state, "batchUpdate").callsFake(async function (this: any, updates: any[], options?: any) {
-      // Return the original result
-      return batchUpdateOriginal.call(this, updates, options);
-    });
 
     await groupFs.state.batchUpdate<any>([{ test: true }]);
 

@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import * as sinon from "sinon";
-import { FluentState, StateManagerConfig, StateManagerMetrics } from "../src";
+import { FluentState, StateManagerMetrics } from "../src";
 
 describe("State Manager Performance Optimizations", () => {
   let fs: FluentState;

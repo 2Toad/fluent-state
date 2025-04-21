@@ -154,7 +154,7 @@ describe("DebugManager History Tracking", () => {
       // This will fail as there's no direct transition from loading to idle
       try {
         await fluentState.transition("idle", { userId: "user2" });
-      } catch (e) {
+      } catch {
         // Expected to fail
       }
       clock.tick(1000);
@@ -373,7 +373,7 @@ describe("DebugManager History Tracking", () => {
       // Add one failed transition
       try {
         await fluentState.transition("success"); // Should fail as there's no direct transition from idle to success
-      } catch (e) {
+      } catch {
         // Expected to fail
       }
 

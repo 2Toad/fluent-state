@@ -1,8 +1,7 @@
 import { expect } from "chai";
 import * as sinon from "sinon";
 import { FluentState } from "../src/fluent-state";
-import { DebugManager } from "../src/debug-manager";
-import { LogLevel, LogEntry, PerformanceMetric } from "../src/types";
+import { LogEntry } from "../src/types";
 
 describe("Debugging Integration Tests", () => {
   let fluentState: FluentState;
@@ -153,7 +152,7 @@ describe("Debugging Integration Tests", () => {
       // Try to transition to a non-existent state
       try {
         await fluentState.transition("nonexistent");
-      } catch (error) {
+      } catch {
         // Expected error
       }
 
@@ -435,7 +434,7 @@ describe("Debugging Integration Tests", () => {
 
     it("should log blocked transitions from middleware", async () => {
       // Add blocking middleware
-      const blockingMiddleware = (prev, next, proceed) => {
+      const blockingMiddleware = (_prev, _next, _proceed) => {
         // Don't call proceed, which blocks the transition
       };
 
@@ -447,7 +446,7 @@ describe("Debugging Integration Tests", () => {
       // Attempt a transition
       try {
         await fluentState.transition("loading");
-      } catch (err) {
+      } catch {
         // Transition might fail due to middleware blocking
       }
 
