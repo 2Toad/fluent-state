@@ -1,4 +1,4 @@
-import { AutoTransitionConfig, SerializedTransitionGroup, TransitionHistoryEntry } from "./types";
+import { AutoTransitionConfig, SerializedTransitionGroup, TransitionHistoryEntry, AutoTransitionEvaluationConfig } from "./types";
 import { FluentState } from "./fluent-state";
 import { TransitionGroupMetrics, TransitionGroupSnapshot } from "./types";
 
@@ -22,6 +22,8 @@ export interface TransitionGroupConfig {
     maxAttempts: number | ((context: unknown) => number);
     delay: number | ((context: unknown) => number);
   };
+  /** Configuration for controlling when transitions in this group are evaluated */
+  evaluationConfig?: AutoTransitionEvaluationConfig;
 }
 
 /**
@@ -525,6 +527,37 @@ export class TransitionGroup {
           }
         }
       }
+
+      // Apply evaluation config if present
+      if (groupConfig.evaluationConfig) {
+        if (!effectiveConfig.evaluationConfig) {
+          effectiveConfig.evaluationConfig = { ...groupConfig.evaluationConfig };
+        } else {
+          // Merge watchProperties arrays
+          if (groupConfig.evaluationConfig.watchProperties) {
+            if (!effectiveConfig.evaluationConfig.watchProperties) {
+              effectiveConfig.evaluationConfig.watchProperties = [...groupConfig.evaluationConfig.watchProperties];
+            } else {
+              // Add any properties that aren't already in the list
+              for (const prop of groupConfig.evaluationConfig.watchProperties) {
+                if (!effectiveConfig.evaluationConfig.watchProperties.includes(prop)) {
+                  effectiveConfig.evaluationConfig.watchProperties.push(prop);
+                }
+              }
+            }
+          }
+
+          // More recently defined skipIf overrides earlier ones
+          if (groupConfig.evaluationConfig.skipIf) {
+            effectiveConfig.evaluationConfig.skipIf = groupConfig.evaluationConfig.skipIf;
+          }
+
+          // More recently defined evaluation strategy overrides earlier ones
+          if (groupConfig.evaluationConfig.evaluationStrategy) {
+            effectiveConfig.evaluationConfig.evaluationStrategy = groupConfig.evaluationConfig.evaluationStrategy;
+          }
+        }
+      }
     }
 
     // Apply effective group config to the transition if not overridden by the transition itself
@@ -560,6 +593,11 @@ export class TransitionGroup {
           delay: effectiveConfig.retryConfig.delay as number,
         };
       }
+    }
+
+    // Apply evaluation config if applicable
+    if (effectiveConfig.evaluationConfig && !result.evaluationConfig) {
+      result.evaluationConfig = { ...effectiveConfig.evaluationConfig };
     }
 
     return result;
@@ -1575,6 +1613,56 @@ export class TransitionGroup {
         });
     });
   }
+
+  /**
+   * Configures when and how transitions in this group should be evaluated.
+   *
+   * @param config - Configuration for controlling transition evaluation
+   * @returns This group instance for chaining
+   */
+  withEvaluationConfig(config: AutoTransitionEvaluationConfig): TransitionGroup {
+    this.config.evaluationConfig = {
+      ...this.config.evaluationConfig,
+      ...config,
+    };
+    return this;
+  }
+
+  /**
+   * Configures transitions in this group to only evaluate when specified properties change.
+   *
+   * @param properties - Property paths to watch for changes
+   * @returns This group instance for chaining
+   */
+  watchProperties(...properties: string[]): TransitionGroup {
+    return this.withEvaluationConfig({
+      watchProperties: properties,
+    });
+  }
+
+  /**
+   * Configures transitions in this group to skip evaluation when the provided condition is true.
+   *
+   * @param skipFn - Function that returns true when evaluation should be skipped
+   * @returns This group instance for chaining
+   */
+  skipIf(skipFn: (context: unknown) => boolean): TransitionGroup {
+    return this.withEvaluationConfig({
+      skipIf: skipFn,
+    });
+  }
+
+  /**
+   * Sets the evaluation timing strategy for transitions in this group.
+   *
+   * @param strategy - Timing strategy for transitions in this group
+   * @returns This group instance for chaining
+   */
+  evaluateOn(strategy: "immediate" | "nextTick" | "idle"): TransitionGroup {
+    return this.withEvaluationConfig({
+      evaluationStrategy: strategy,
+    });
+  }
 }
 
 /**
@@ -1585,6 +1673,7 @@ export class TransitionBuilder {
   private fromState: string;
   private lastToState?: string;
   private currentTags: string[] = [];
+  private lastTransitionIndex?: number;
 
   constructor(group: TransitionGroup, fromState: string) {
     this.group = group;
@@ -1612,6 +1701,13 @@ export class TransitionBuilder {
   to<TContext = unknown>(toState: string, config?: AutoTransitionConfig<TContext>): TransitionBuilder {
     this.group.addTransition(this.fromState, toState, config, this.currentTags);
     this.lastToState = toState;
+
+    // Track index of this transition for later configuration
+    const fromMap = this.group["transitions"].get(this.fromState);
+    if (fromMap) {
+      this.lastTransitionIndex = fromMap.size - 1;
+    }
+
     this.currentTags = []; // Reset tags after use
     return this;
   }
@@ -1631,7 +1727,78 @@ export class TransitionBuilder {
 
     this.group.addTransition(this.fromState, toState, config, this.currentTags);
     this.lastToState = toState;
+
+    // Track index of this transition for later configuration
+    const fromMap = this.group["transitions"].get(this.fromState);
+    if (fromMap) {
+      this.lastTransitionIndex = fromMap.size - 1;
+    }
+
     this.currentTags = []; // Reset tags after use
     return this;
+  }
+
+  /**
+   * Configures when and how the last added transition should be evaluated.
+   *
+   * @param config - Configuration for controlling transition evaluation
+   * @returns This builder instance for chaining
+   */
+  withEvaluationConfig(config: AutoTransitionEvaluationConfig): TransitionBuilder {
+    if (!this.lastToState) {
+      throw new Error("withEvaluationConfig() must be called after to() or or()");
+    }
+
+    // Get the transitions map
+    const fromMap = this.group["transitions"].get(this.fromState);
+    if (!fromMap) return this;
+
+    // Get the transition config
+    const transitionConfig = fromMap.get(this.lastToState);
+    if (transitionConfig) {
+      // Set or merge the evaluation config
+      transitionConfig.evaluationConfig = {
+        ...transitionConfig.evaluationConfig,
+        ...config,
+      };
+    }
+
+    return this;
+  }
+
+  /**
+   * Configures the last added transition to only evaluate when specified properties change.
+   *
+   * @param properties - Property paths to watch for changes
+   * @returns This builder instance for chaining
+   */
+  watchProperties(...properties: string[]): TransitionBuilder {
+    return this.withEvaluationConfig({
+      watchProperties: properties,
+    });
+  }
+
+  /**
+   * Configures the last added transition to skip evaluation when the provided condition is true.
+   *
+   * @param skipFn - Function that returns true when evaluation should be skipped
+   * @returns This builder instance for chaining
+   */
+  skipIf(skipFn: (context: unknown) => boolean): TransitionBuilder {
+    return this.withEvaluationConfig({
+      skipIf: skipFn,
+    });
+  }
+
+  /**
+   * Sets the evaluation timing strategy for the last added transition.
+   *
+   * @param strategy - Timing strategy for the transition
+   * @returns This builder instance for chaining
+   */
+  evaluateOn(strategy: "immediate" | "nextTick" | "idle"): TransitionBuilder {
+    return this.withEvaluationConfig({
+      evaluationStrategy: strategy,
+    });
   }
 }

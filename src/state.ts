@@ -42,6 +42,15 @@ export class State {
   /** Map of debounce timers for transitions with debounce values */
   private debounceTimers: Map<number, NodeJS.Timeout> = new Map();
 
+  /** Last recorded context for comparing property changes */
+  private lastContext: unknown = {};
+
+  /** Map for tracking idle callbacks by transition */
+  private idleCallbacks: Map<number, number> = new Map();
+
+  /** Cached property paths for faster property access */
+  private propertyPathCache: Map<string, string[]> = new Map();
+
   constructor(name: string, fluentState: FluentState) {
     this.fluentState = fluentState;
     this.name = name;
@@ -80,6 +89,8 @@ export class State {
           priority: config.priority,
           debounce: config.debounce,
           retryConfig: config.retryConfig,
+          groupName: config.groupName,
+          evaluationConfig: config.evaluationConfig,
         });
       }
     }
@@ -108,14 +119,18 @@ export class State {
    * @param update - Partial update to apply to the context
    */
   updateContext<T>(update: Partial<T>): void {
-    const currentState = this.stateManager.getState() as T;
+    const previousContext = this.stateManager.getState() as T;
+    const currentState = previousContext;
     this.stateManager.setState({ ...currentState, ...update });
+
+    // Store the last context for property comparisons
+    const newContext = this.stateManager.getState();
 
     // Check if we're still the current state in the state machine
     // This prevents evaluation if the state has already been exited
     if (this.fluentState.getCurrentState()?.name === this.name) {
       // Evaluate transitions after context update
-      this.evaluateAutoTransitions(this.stateManager.getState());
+      this.evaluateAutoTransitions(newContext, previousContext);
     }
   }
 
@@ -137,7 +152,7 @@ export class State {
     // Then check auto-transitions with empty context
     // Only evaluate if we have auto-transitions and we're not already transitioning
     if (this.autoTransitions.length > 0) {
-      await this.evaluateAutoTransitions({});
+      await this.evaluateAutoTransitions(this.stateManager.getState());
     }
   }
 
@@ -145,8 +160,9 @@ export class State {
    * Triggers all exit handlers in parallel when leaving this state.
    */
   async _triggerExit(nextState: State): Promise<void> {
-    // Clear any debounce timers when exiting the state
+    // Clear all timers and callbacks when exiting the state
     this.clearAllDebounceTimers();
+    this.clearAllIdleCallbacks();
 
     // Call all exit handlers
     for (const handler of this.exitEventHandlers) {
@@ -247,19 +263,28 @@ export class State {
    * For transitions with the same priority, the order they were defined is maintained.
    *
    * @param context - The context to evaluate transitions against
+   * @param previousContext - The previous context for property change detection
    * @returns true if a transition occurred
    */
-  async evaluateAutoTransitions<TContext = unknown>(context: TContext): Promise<boolean> {
+  async evaluateAutoTransitions<TContext = unknown>(context: TContext, previousContext?: TContext): Promise<boolean> {
     if (this.isEvaluating) {
       return false;
     }
 
-    // Clear any active debounce timers for immediate evaluation
-    this.clearAllDebounceTimers();
+    // Save context for future comparisons if not provided
+    if (!previousContext) {
+      previousContext = this.lastContext as TContext;
+    }
+    this.lastContext = context;
 
-    // Group transitions by whether they have debounce or not
-    const nonDebouncedTransitions: AutoTransitionConfig[] = [];
+    // Clear any active debounce timers and idle callbacks for immediate evaluation
+    this.clearAllIdleCallbacks();
+
+    // Group transitions by their evaluation strategy
+    const immediateTransitions: AutoTransitionConfig[] = [];
     const debouncedTransitions: AutoTransitionConfig[] = [];
+    const nextTickTransitions: AutoTransitionConfig[] = [];
+    const idleTransitions: AutoTransitionConfig[] = [];
 
     // Sort transitions by priority (highest first)
     const sortedTransitions = [...this.autoTransitions].sort((a, b) => {
@@ -268,23 +293,67 @@ export class State {
       return priorityB - priorityA;
     });
 
-    // Separate debounced and non-debounced transitions
+    // Filter transitions based on:
+    // 1. Skip conditions (skipIf)
+    // 2. Property changes (watchProperties)
+    // 3. Evaluation strategy and debounce
     for (const transition of sortedTransitions) {
+      const transitionIndex = this.autoTransitions.indexOf(transition);
+
+      // Check skip condition first - if true, skip this transition
+      if (transition.evaluationConfig?.skipIf && transition.evaluationConfig.skipIf(context)) {
+        // If skipped, clear any pending debounce timer for this specific transition
+        if (this.debounceTimers.has(transitionIndex)) {
+          clearTimeout(this.debounceTimers.get(transitionIndex));
+          this.debounceTimers.delete(transitionIndex);
+        }
+        continue;
+      }
+
+      // Check if we should evaluate based on property changes
+      if (
+        transition.evaluationConfig?.watchProperties &&
+        previousContext !== undefined &&
+        !this.havePropertiesChanged(previousContext, context, transition.evaluationConfig.watchProperties)
+      ) {
+        // If properties didn't change for this update, skip evaluating/rescheduling this transition.
+        // Any existing debounce timer from a *previous* relevant change will continue.
+        continue;
+      }
+
+      // Determine which group this transition belongs to based on timing strategy
       if (transition.debounce && transition.debounce > 0) {
         debouncedTransitions.push(transition);
+      } else if (transition.evaluationConfig?.evaluationStrategy === "nextTick") {
+        nextTickTransitions.push(transition);
+      } else if (transition.evaluationConfig?.evaluationStrategy === "idle") {
+        idleTransitions.push(transition);
       } else {
-        nonDebouncedTransitions.push(transition);
+        // Default to immediate evaluation
+        immediateTransitions.push(transition);
       }
     }
 
-    // Process non-debounced transitions immediately
-    const immediateResult = await this.processTransitions(nonDebouncedTransitions, context);
+    // Process immediate transitions first
+    const immediateResult = await this.processTransitions(immediateTransitions, context);
     if (immediateResult) {
-      return true; // A transition happened, don't process debounced ones
+      return true; // A transition happened, don't process other transitions
     }
 
     // Schedule debounced transitions
     this.scheduleDebouncedTransitions(debouncedTransitions, context);
+
+    // Schedule next tick transitions
+    if (nextTickTransitions.length > 0) {
+      setTimeout(() => {
+        if (this.fluentState.getCurrentState()?.name === this.name) {
+          this.processTransitions(nextTickTransitions, context);
+        }
+      }, 0);
+    }
+
+    // Schedule idle transitions
+    this.scheduleIdleTransitions(idleTransitions, context);
 
     return false;
   }
@@ -401,6 +470,55 @@ export class State {
   }
 
   /**
+   * Schedule transitions to be evaluated during browser idle time
+   * @param transitions Transitions to schedule
+   * @param context Context to evaluate transitions with
+   */
+  private scheduleIdleTransitions<TContext>(transitions: AutoTransitionConfig[], context: TContext): void {
+    if (transitions.length === 0) return;
+
+    // Use requestIdleCallback if available, or setTimeout as fallback
+    const requestIdleCallback =
+      typeof window !== "undefined" && "requestIdleCallback" in window
+        ? (window as Window & typeof globalThis).requestIdleCallback
+        : (callback: () => void) => {
+            const handle = setTimeout(callback, 1);
+            return handle as unknown as number; // Cast NodeJS.Timeout to number
+          };
+
+    const cancelIdleCallback =
+      typeof window !== "undefined" && "cancelIdleCallback" in window ? (window as Window & typeof globalThis).cancelIdleCallback : clearTimeout;
+
+    for (let i = 0; i < transitions.length; i++) {
+      const transition = transitions[i];
+      const transitionIndex = this.autoTransitions.indexOf(transition);
+
+      // Clear existing idle callback if any
+      if (this.idleCallbacks.has(transitionIndex)) {
+        cancelIdleCallback(this.idleCallbacks.get(transitionIndex));
+      }
+
+      // Schedule new idle callback
+      const idleCallbackId = requestIdleCallback(async () => {
+        this.idleCallbacks.delete(transitionIndex);
+
+        // Only evaluate if we're still in this state
+        if (this.fluentState.getCurrentState()?.name === this.name) {
+          const shouldTransition = await transition.condition(this, context);
+          if (shouldTransition) {
+            await this.fluentState.transition(transition.targetState).catch((error) => {
+              console.error("Idle auto-transition failed:", error);
+            });
+          }
+        }
+      });
+
+      // Store the callback ID
+      this.idleCallbacks.set(transitionIndex, idleCallbackId);
+    }
+  }
+
+  /**
    * Clear all debounce timers
    */
   private clearAllDebounceTimers(): void {
@@ -408,5 +526,100 @@ export class State {
       clearTimeout(timer);
     }
     this.debounceTimers.clear();
+  }
+
+  /**
+   * Clear all idle callbacks
+   */
+  private clearAllIdleCallbacks(): void {
+    if (this.idleCallbacks.size === 0) return;
+
+    const cancelIdleCallback =
+      typeof window !== "undefined" && "cancelIdleCallback" in window ? (window as Window & typeof globalThis).cancelIdleCallback : clearTimeout;
+
+    for (const callbackId of this.idleCallbacks.values()) {
+      cancelIdleCallback(callbackId);
+    }
+    this.idleCallbacks.clear();
+  }
+
+  /**
+   * Check if any of the specified properties have changed between contexts
+   * @param previousContext Previous context
+   * @param currentContext Current context
+   * @param properties Array of property paths to check
+   * @returns True if any specified property has changed
+   */
+  private havePropertiesChanged<TContext>(previousContext: TContext, currentContext: TContext, properties: string[]): boolean {
+    if (!previousContext || !currentContext) return true;
+
+    for (const propPath of properties) {
+      // Get the value from both contexts
+      const prevValue = this.getPropertyValue(previousContext, propPath);
+      const currValue = this.getPropertyValue(currentContext, propPath);
+
+      // Check for different values (simple equality check)
+      if (prevValue !== currValue) {
+        return true;
+      }
+
+      // Also check for value existence changes
+      const prevExists = prevValue !== undefined;
+      const currExists = currValue !== undefined;
+      if (prevExists !== currExists) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Get a property value from an object using a path expression
+   * Supports dot notation and array notation
+   * @param obj The object to get the property from
+   * @param path The path to the property (e.g., 'user.profile.name' or 'items[0].status')
+   * @returns The property value or undefined if not found
+   */
+  private getPropertyValue(obj: unknown, path: string): unknown {
+    if (!obj) return undefined;
+
+    // Use cached path parts if available
+    let parts: string[];
+    if (this.propertyPathCache.has(path)) {
+      parts = this.propertyPathCache.get(path);
+    } else {
+      // Parse the path into parts, handling both dot notation and array notation
+      parts = path.split(".").reduce((acc, part) => {
+        // Handle array notation like 'items[0]'
+        if (part.includes("[") && part.includes("]")) {
+          const bracketIndex = part.indexOf("[");
+          const propertyName = part.substring(0, bracketIndex);
+          const indexMatches = part.match(/\[([0-9]+)\]/g);
+
+          if (indexMatches) {
+            acc.push(propertyName);
+            for (const indexMatch of indexMatches) {
+              // Extract the index number from something like '[0]'
+              const index = indexMatch.substring(1, indexMatch.length - 1);
+              acc.push(index);
+            }
+            return acc;
+          }
+        }
+
+        acc.push(part);
+        return acc;
+      }, []);
+
+      // Cache the parsed path parts
+      this.propertyPathCache.set(path, parts);
+    }
+
+    // Traverse the object using the parts
+    return parts.reduce((value, key) => {
+      if (value === undefined || value === null) return undefined;
+      return (value as Record<string | number, unknown>)[key];
+    }, obj);
   }
 }
