@@ -191,6 +191,71 @@ Benefits:
 - Atomic updates when needed
 - Reduced unnecessary transition evaluations
 
+User Story:
+As a developer working with FluentState in a performance-sensitive application,
+I want to batch multiple related context updates together,
+So that I can optimize state machine performance, ensure atomic operations, and reduce unnecessary state transition evaluations.
+
+Acceptance Criteria:
+
+1. Batch Update API
+   - The State class provides a `batchUpdate` method that accepts an array of partial context updates
+   - The method returns a Promise that resolves to a boolean indicating success or failure
+   - The API maintains type safety with the context type parameter
+   - Updates are processed in the order they are provided in the array
+   - The method supports empty update arrays (no-op) and returns true
+
+2. Transition Evaluation Control
+   - When `evaluateAfterComplete` is true, auto-transitions are only evaluated after all updates are applied
+   - When `evaluateAfterComplete` is false (default), auto-transitions are evaluated after each update
+   - During batch updates with `evaluateAfterComplete: true`, the state machine remains responsive to manual transitions
+   - If auto-transitions are triggered during batch processing, they respect transition priorities and debounce settings
+
+3. Atomic Update Support
+   - When `atomic` is true, the entire batch fails if any single update fails
+   - When `atomic` is true and an update fails, any previously applied updates in the batch are reverted
+   - When `atomic` is false (default), updates are applied independently and the method returns true if any updates succeeded
+   - The batch process properly handles errors and provides meaningful error information
+   - Atomic operations properly clean up any resources used during the process
+
+4. Integration with Existing Features
+   - Batch updates are properly recorded in transition history when history tracking is enabled
+   - Batch updates work seamlessly with debounced transitions
+   - Batch updates respect transition group configurations
+   - The batching mechanism works with custom equality checking functions
+   - Performance metrics are available when debugging features are enabled
+
+Example Usage:
+```typescript
+// Basic batch update
+await machine.currentState.batchUpdate([
+  { counter: 1 },
+  { status: 'processing' },
+  { progress: 0.5 }
+]);
+
+// Atomic batch update with evaluation after completion
+try {
+  const success = await machine.currentState.batchUpdate(
+    [
+      { step1: 'complete' },
+      { step2: 'complete' },
+      { step3: 'complete' }
+    ],
+    {
+      evaluateAfterComplete: true,
+      atomic: true
+    }
+  );
+  
+  if (success) {
+    console.log('All steps completed successfully');
+  }
+} catch (error) {
+  console.error('Failed to complete all steps:', error);
+}
+```
+
 ## ✅ 4. Conditional Auto-transition Evaluation
 Dependencies:
 - Enhanced Auto-transition Configuration (for priority and timing control)
