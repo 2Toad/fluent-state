@@ -15,7 +15,7 @@ describe("DebugManager History Tracking", () => {
     fluentState = new FluentState({
       initialState: "idle",
       debug: {
-        logLevel: "debug",
+        logLevel: "warn",
         measurePerformance: false,
       },
     });
@@ -40,7 +40,9 @@ describe("DebugManager History Tracking", () => {
       expect(debugManager.getHistory()).to.be.undefined;
 
       // Enable history tracking
+      debugManager.setLogLevel("debug");
       debugManager.enableHistoryTracking(true);
+      debugManager.setLogLevel("warn");
 
       // Now history should be available
       expect(debugManager.getHistory()).to.be.instanceOf(TransitionHistory);
@@ -48,10 +50,12 @@ describe("DebugManager History Tracking", () => {
 
     it("should configure history options", () => {
       // Enable and configure in one step
+      debugManager.setLogLevel("debug");
       debugManager.enableHistoryTracking(true, {
         maxSize: 50,
         includeContext: false,
       });
+      debugManager.setLogLevel("warn");
 
       // Record a transition with context
       const fromState = new State("test", fluentState);

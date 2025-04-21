@@ -2,8 +2,7 @@ import { expect } from "chai";
 import * as sinon from "sinon";
 import { FluentState } from "../src/fluent-state";
 import { DebugManager } from "../src/debug-manager";
-import { LogLevel, LogEntry, PerformanceMetric } from "../src/types";
-import { suppressConsole } from "./helpers/console-suppressor";
+import { LogEntry, PerformanceMetric } from "../src/types";
 
 describe("DebugManager", () => {
   let fluentState: FluentState;
